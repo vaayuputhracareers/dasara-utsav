@@ -15,6 +15,6 @@
       website update will stop with a red ✗ to protect you.
    ===================================================================== */
 window.APP_CONFIG = {
-  supabaseUrl: "",
-  supabaseKey: ""
+  supabaseUrl: "https://llzvcfkxocltdefrjmsp.supabase.co",
+  supabaseKey: "sb_publishable_bhjTZUb9LpdaBGBPZ2WyMg_zmQvGa-D"
 };
