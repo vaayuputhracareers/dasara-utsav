@@ -751,7 +751,10 @@ const D = {
   // ---- version 10: the admin deletes members ----
   delete_member: ['🗑️ సభ్యుని తొలగించండి', '🗑️ Delete member'],
   delete_member_hint: ['రసీదులు, ఖర్చులు లెక్కల్లో అలాగే ఉంటాయి — లాగిన్ మాత్రమే తొలగించబడుతుంది. ఈ మొబైల్ నంబర్‌ను మళ్ళీ వాడుకోవచ్చు.', 'Their receipts and expenses stay in the accounts – only the login is removed. The mobile number can be used again.'],
-  delete_member_confirm: ['{name}ను తొలగించాలా?\n\n{name} ఇకపై లాగిన్ కాలేరు, సభ్యుల జాబితాలో కనిపించరు. {name} చేసిన రసీదులు, ఖర్చులు, నగదు అప్పగింతలు లెక్కల్లో {name} పేరుతోనే ఉంటాయి.', "Delete {name}?\n\n{name} can no longer log in and will not appear in the members list. Receipts, expenses and cash handovers by {name} stay in the accounts under {name}'s name."],
+  delete_member_confirm: ['{name}ను తొలగించాలా?\n\n{name} ఇకపై లాగిన్ కాలేరు, సభ్యుల జాబితాలో కనిపించరు. {name} చేసిన రసీదులు, ఖర్చులు, నగదు అప్పగింతలు లెక్కల్లో {name} పేరుతోనే ఉంటాయి. {name} వద్ద ఇంకా నగదు ఉంటే, అది లెక్కల్లో "సభ్యుల వద్ద నగదు"గా ఉంటుంది — తర్వాత కూడా నగదు అప్పగింత నమోదు చేయవచ్చు.', "Delete {name}?\n\n{name} can no longer log in and will not appear in the members list. Receipts, expenses and cash handovers by {name} stay in the accounts under {name}'s name. If {name} still holds cash, it stays in the accounts as 'cash with members' – you can still record the handover later."],
+  member_deleted_cash: ['{name} వద్ద ఇంకా {amount} నగదు ఉంది — అందినప్పుడు "నగదు అప్పగింత"లో నమోదు చేయండి.', '{name} still holds {amount} cash – record it in "Cash handover" when you receive it.'],
+  member_deleted_owed: ['కమిటీ {name}కు {amount} ఇవ్వాలి — "ఖర్చులు"లో తిరిగి చెల్లించండి.', 'The committee owes {name} {amount} – pay it back from Expenses.'],
+  member_deleted_pending: ['{n} ఖర్చులు ఇంకా మీ ఆమోదం కోసం ఉన్నాయి.', '{n} expense(s) still wait for your approval.'],
   member_deleted: ['{name} తొలగించబడ్డారు ✅', '{name} deleted ✅'],
   member_deleted_kept: ['{name} తొలగించబడ్డారు ✅ — వారి రసీదులు / ఖర్చులు లెక్కల్లో ఉన్నాయి', '{name} deleted ✅ – their receipts / expenses stay in the accounts'],
   err_member_has_balance: ['ఈ సభ్యుని నగదు బ్యాలెన్స్ ఇంకా సున్నా కాదు — ముందుగా "నగదు అప్పగింత"లో సర్దుబాటు చేయండి', "This member's cash balance is not zero yet – settle it in \"Cash handover\" first"],

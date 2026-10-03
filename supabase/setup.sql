@@ -1154,16 +1154,18 @@ begin
   return v_mobile;
 end $$;
 
--- Version 10 – the admin deletes a member (never an admin, never themselves).
---   • no receipts / expenses / handovers → the member and the login are removed completely
---   • with records → the records stay in the accounts (with the name); the login is closed, the member
---     disappears from the members list and the mobile number is free to be used again
--- Not allowed while the member still holds cash / is owed money, or has expenses waiting for approval.
+-- Versions 10–11 – the admin deletes a member or another admin (anyone except themselves).
+--   • no receipts / expenses / handovers → the account and the login are removed completely
+--   • with records → the records stay in the accounts (with the name); the login is closed, the account
+--     disappears from the members list and the mobile number is free to be used again.
+--   Cash the person still holds stays in "cash with members" (the handover can still be recorded later);
+--   expenses waiting for approval stay in Expenses. The result tells the admin about both.
 create or replace function public.admin_delete_member(p_user uuid)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   p public.profiles%rowtype;
   v_bal numeric;
+  v_pending bigint;
   v_records bigint;
   v_mode text := 'removed';
 begin
@@ -1171,12 +1173,10 @@ begin
   if p_user = auth.uid() then raise exception 'cannot_delete_self'; end if;
   select * into p from public.profiles where id = p_user for update;
   if not found or p.status = 'deleted' then raise exception 'member_not_found'; end if;
-  if p.role = 'admin' then raise exception 'cannot_delete_admin'; end if;
   select balance into v_bal from public.member_balances_internal() where member_id = p_user;
-  if coalesce(v_bal, 0) <> 0 then raise exception 'member_has_balance'; end if;
-  if exists (select 1 from public.expenses where status = 'pending' and (created_by = p_user or paid_by = p_user)) then
-    raise exception 'member_has_pending';
-  end if;
+  v_bal := coalesce(v_bal, 0);
+  select count(*) into v_pending from public.expenses
+   where status = 'pending' and (created_by = p_user or paid_by = p_user);
   select (select count(*) from public.donations where collected_by = p_user or cancelled_by = p_user or upi_verified_by = p_user)
        + (select count(*) from public.expenses where created_by = p_user or paid_by = p_user or reviewed_by = p_user or settled_by = p_user)
        + (select count(*) from public.handovers where member_id = p_user or received_by = p_user)
@@ -1205,13 +1205,15 @@ begin
        where id = p_user;
       delete from auth.sessions where user_id = p_user;
     exception when others then
-      null;   -- not allowed here: the member still cannot use the app (status 'deleted')
+      null;   -- not allowed here: the person still cannot use the app (status 'deleted')
     end;
   end if;
   perform set_config('app.member_delete', '', true);
   perform public.write_audit('member_deleted', 'profile', p_user::text,
-    jsonb_build_object('name', p.full_name, 'mobile', p.mobile, 'records', v_records, 'kept', v_mode = 'kept'));
-  return jsonb_build_object('mode', v_mode, 'records', v_records, 'name', p.full_name);
+    jsonb_build_object('name', p.full_name, 'mobile', p.mobile, 'role', p.role, 'records', v_records,
+                       'kept', v_mode = 'kept', 'cash_held', v_bal, 'pending_expenses', v_pending));
+  return jsonb_build_object('mode', v_mode, 'records', v_records, 'name', p.full_name,
+                            'balance', v_bal, 'pending', v_pending);
 end $$;
 
 create or replace function public.admin_reset_password(p_user uuid, p_password text)
@@ -1245,7 +1247,7 @@ end $$;
 --   5 = puja schedule   6 = "Donate" (UPI) on the public page, QR poster editor, Telugu names in the schedules
 --   7 = member expenses paid back by the admin (cash / temple UPI), members may see the financial position
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 10 $$;
+language sql immutable set search_path = '' as $$ select 11 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts

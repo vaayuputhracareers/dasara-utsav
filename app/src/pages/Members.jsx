@@ -132,18 +132,24 @@ export default function Members() {
     return true;
   };
   // Version 10 – delete a member (records stay in the accounts; see admin_delete_member in setup.sql)
-  const doDelete = async () => {
-    const name = sel.full_name || sel.name_te || sel.mobile || '';
+  const doDelete = async (who) => {
+    if (!who || who.id === me.id) return;
+    const name = who.full_name || who.name_te || who.mobile || '';
     if (!window.confirm(t('delete_member_confirm', { name }))) return;
     setBusy(true);
-    const { data: r, error } = await supabase.rpc('admin_delete_member', { p_user: sel.id });
+    const { data: r, error } = await supabase.rpc('admin_delete_member', { p_user: who.id });
     setBusy(false);
     if (error) {
       const old = error.code === 'PGRST202' || /Could not find the function/i.test(error.message || '');
       toast(old ? t('err_db_update_needed') : errMsg(error, t), 'error', 7000);
       return;
     }
-    toast(r?.mode === 'kept' ? t('member_deleted_kept', { name }) : t('member_deleted', { name }), 'success', 6000);
+    const msg = [r?.mode === 'kept' ? t('member_deleted_kept', { name }) : t('member_deleted', { name })];
+    const bal = Number(r?.balance || 0);
+    if (bal > 0) msg.push(t('member_deleted_cash', { name, amount: inr(bal) }));
+    if (bal < 0) msg.push(t('member_deleted_owed', { name, amount: inr(-bal) }));
+    if (Number(r?.pending) > 0) msg.push(t('member_deleted_pending', { n: r.pending }));
+    toast(msg.join(' '), 'success', msg.length > 1 ? 12000 : 6000);
     setSel(null);
     reload(true);
   };
@@ -176,6 +182,7 @@ export default function Members() {
                       <div className="row">
                         <button className="btn ghost danger-t xs" disabled={busy} onClick={() => update(p.id, { status: 'blocked' })}>{t('reject')}</button>
                         <button className="btn ok xs" disabled={busy} onClick={() => update(p.id, { status: 'active' }, t('approved_member', { name: p.full_name }))}>{t('approve')}</button>
+                        <button className="btn ghost danger-t xs" disabled={busy} title={t('delete_member')} aria-label={t('delete_member')} onClick={() => doDelete(p)}>🗑️</button>
                       </div>
                     </div>
                   ))}
@@ -200,6 +207,10 @@ export default function Members() {
                         {p.role === 'admin' && <Badge tone="blue">{t('admin')}</Badge>}
                         {p.status === 'blocked' && <Badge tone="red">{t('status_blocked')}</Badge>}
                       </div>
+                      {p.id !== me.id && (
+                        <button type="button" className="btn ghost danger-t xs" disabled={busy} title={t('delete_member')} aria-label={t('delete_member')}
+                          data-testid={`del-${p.id}`} onClick={(e) => { e.stopPropagation(); doDelete(p); }}>🗑️</button>
+                      )}
                     </div>
                   );
                 })}
@@ -254,9 +265,9 @@ export default function Members() {
               <span className="hint">{t('pin_member_hint')}</span>
               <button className="btn ghost block" disabled={busy} onClick={doReset} data-testid="reset-pin-btn">{t('reset_pin')}</button>
             </div>
-            {!isMe && sel.role !== 'admin' && (
+            {!isMe && (
               <div className="stack tight">
-                <button className="btn ghost danger-t block" disabled={busy} onClick={doDelete} data-testid="delete-member">{t('delete_member')}</button>
+                <button className="btn ghost danger-t block" disabled={busy} onClick={() => doDelete(sel)} data-testid="delete-member">{t('delete_member')}</button>
                 <span className="hint">{t('delete_member_hint')}</span>
               </div>
             )}
