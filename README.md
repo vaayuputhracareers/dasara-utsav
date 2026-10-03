@@ -6,7 +6,7 @@ schedule and a public QR page**. It works in Telugu and English, on phones and l
 
 | | |
 |---|---|
-| 🌐 **Website** | https://vaayuputhracareers.github.io/dasara-utsav/ |
+| 🌐 **Website** | https://dasara.localline.in/ |
 | ⚙️ **Connect to Supabase** (2 values) | [Edit `config.js`](https://github.com/vaayuputhracareers/dasara-utsav/edit/main/config.js) |
 | ✅ **Publishing status** | [Actions](https://github.com/vaayuputhracareers/dasara-utsav/actions) (a green ✓ means the website is updated) |
 | 📘 **Step-by-step guide** | [SETUP-GUIDE.md](SETUP-GUIDE.md) |
