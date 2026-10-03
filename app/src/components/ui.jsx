@@ -38,12 +38,12 @@ export function Page({ title, sub, right, back, wide, children }) {
   );
 }
 
+/** Loading screen (app start / refresh): only the spinning circle – no icon. */
 export function Splash({ error, onRetry }) {
   const { t } = useLang();
   return (
-    <div className="splash">
+    <div className="splash" data-testid="app-loading">
       <div>
-        <div className="lamp">🪔</div>
         {error ? (
           <>
             <p style={{ margin: '10px 0' }}>{t('network_error')}</p>

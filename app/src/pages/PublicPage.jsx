@@ -31,7 +31,7 @@ export default function PublicPage() {
     if (data?.branding) document.title = `${L(data.branding, 'temple_name') || ''} – ${L(data.branding, 'event_title') || ''}`;
   }, [data, L]);
 
-  if (!data && !err) return <div className="splash"><div><div className="lamp">🪔</div><Spinner /></div></div>;
+  if (!data && !err) return <div className="splash" data-testid="app-loading"><Spinner /></div>;
   if (err || !data?.enabled) {
     return (
       <div className="splash"><div><div className="lamp">🪔</div><p style={{ marginTop: 10, fontWeight: 700 }}>{t('page_unavailable')}</p><div style={{ marginTop: 12 }}><LangSwitch /></div></div></div>
