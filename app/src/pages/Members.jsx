@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { supabase, makeTempClient, cleanMobile, isValidMobile, mobileToEmail } from '../lib/supabase.js';
+import { supabase, makeTempClient, cleanMobile, isValidMobile, isPin, mobileToEmail } from '../lib/supabase.js';
+import { genPin } from '../lib/pin.js';
 import { useLang, DICT } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
@@ -7,31 +8,30 @@ import { useAsync } from '../lib/useAsync.js';
 import { errMsg } from '../lib/errors.js';
 import { inr, personName, fmtDate } from '../lib/format.js';
 import { appBaseUrl, waLink } from '../lib/receipt.js';
-import { Page, Spinner, Empty, Modal, Field, Seg, Badge, useToast, copyText } from '../components/ui.jsx';
+import { Page, Spinner, Empty, Modal, Field, Seg, Badge, useToast, copyText, MobileInput } from '../components/ui.jsx';
 
-const WORDS = ['durga', 'utsav', 'deepa', 'ganga', 'laxmi', 'pooja', 'kalasa', 'jyothi', 'mangala', 'vijaya'];
-const genPassword = () => WORDS[Math.floor(Math.random() * WORDS.length)] + String(Math.floor(1000 + Math.random() * 9000));
+const digits6 = (v) => String(v || '').replace(/\D/g, '').slice(0, 6);
 
-function loginMessage(settings, m, password) {
+function loginMessage(settings, m, pin) {
   return DICT.login_message[0]
     .replace('{name}', m.name_te || m.full_name)
     .replace('{event}', settings.event_title_te || settings.event_title_en || '')
     .replace('{url}', appBaseUrl(settings))
     .replace('{mobile}', m.mobile)
-    .replace('{password}', password);
+    .replace('{pin}', pin);
 }
 
-function CredentialsCard({ m, password, settings }) {
+function CredentialsCard({ m, pin, settings }) {
   const { t } = useLang();
   const toast = useToast();
-  const msg = loginMessage(settings, m, password);
+  const msg = loginMessage(settings, m, pin);
   return (
     <div className="stack">
       <div className="alert ok">{t('give_these')}</div>
       <dl className="kv card">
         <dt>{t('name')}</dt><dd>{m.full_name}</dd>
         <dt>{t('mobile')}</dt><dd className="num" style={{ fontSize: 17 }}>{m.mobile}</dd>
-        <dt>{t('password')}</dt><dd className="mono" style={{ fontSize: 17 }}>{password}</dd>
+        <dt>{t('pin_short')}</dt><dd className="mono" style={{ fontSize: 19, letterSpacing: '.12em' }} data-testid="cred-pin">{pin}</dd>
         <dt>🔗</dt><dd className="num" style={{ fontSize: 12 }}>{appBaseUrl(settings)}</dd>
       </dl>
       <a className="btn wa block" href={waLink(m.mobile, msg)} target="_blank" rel="noopener noreferrer">{t('share_login')}</a>
@@ -50,7 +50,7 @@ export default function Members() {
   const [created, setCreated] = useState(null);
   const [sel, setSel] = useState(null);
   const [edit, setEdit] = useState(null);
-  const [newPass, setNewPass] = useState('');
+  const [newPin, setNewPin] = useState('');
   const [resetDone, setResetDone] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -67,22 +67,22 @@ export default function Members() {
   const pending = people.filter((p) => p.status === 'pending');
   const others = useMemo(() => people.filter((p) => p.status !== 'pending').sort((a, b) => (a.role === b.role ? a.full_name.localeCompare(b.full_name) : a.role === 'admin' ? -1 : 1)), [people]);
 
-  const openAdd = () => { setNf({ full_name: '', name_te: '', mobile: '', password: genPassword(), role: 'member' }); setCreated(null); setAddOpen(true); };
+  const openAdd = () => { setNf({ full_name: '', name_te: '', mobile: '', pin: genPin(), role: 'member' }); setCreated(null); setAddOpen(true); };
   const createMember = async () => {
     if (!nf.full_name.trim()) return toast(t('required') + ': ' + t('full_name'), 'error');
     if (!isValidMobile(nf.mobile)) return toast(t('mobile_invalid'), 'error');
-    if (nf.password.length < 6) return toast(t('password_min'), 'error');
+    if (!isPin(nf.pin)) return toast(t('pin_invalid'), 'error');
     setBusy(true);
     const mobile = cleanMobile(nf.mobile);
     try {
       const { error: invErr } = await supabase.rpc('create_member_invite', { p_mobile: mobile, p_full_name: nf.full_name.trim(), p_name_te: nf.name_te.trim(), p_role: nf.role });
       if (invErr) throw invErr;
       const tmp = makeTempClient();
-      const { error: suErr } = await tmp.auth.signUp({ email: mobileToEmail(mobile), password: nf.password, options: { data: { full_name: nf.full_name.trim() } } });
+      const { error: suErr } = await tmp.auth.signUp({ email: mobileToEmail(mobile), password: nf.pin, options: { data: { full_name: nf.full_name.trim(), pin_set: true } } });
       if (suErr) { await supabase.from('member_invites').delete().eq('mobile', mobile); throw suErr; }
       await tmp.rpc('ensure_my_profile'); // creates the profile now (no-op if the trigger already did); returns {error}, never throws
       await tmp.auth.signOut().catch(() => {});
-      setCreated({ m: { full_name: nf.full_name.trim(), name_te: nf.name_te.trim(), mobile }, password: nf.password });
+      setCreated({ m: { full_name: nf.full_name.trim(), name_te: nf.name_te.trim(), mobile }, pin: nf.pin });
       toast(t('member_created'), 'success');
       reload(true);
     } catch (e) { toast(errMsg(e, t), 'error', 6000); }
@@ -99,15 +99,15 @@ export default function Members() {
     return true;
   };
   const doReset = async () => {
-    if (newPass.length < 6) return toast(t('password_min'), 'error');
+    if (!isPin(newPin)) return toast(t('pin_invalid'), 'error');
     setBusy(true);
-    const { error } = await supabase.rpc('admin_reset_password', { p_user: sel.id, p_password: newPass });
+    const { error } = await supabase.rpc('admin_reset_password', { p_user: sel.id, p_password: newPin });
     setBusy(false);
     if (error) return toast(errMsg(error, t), 'error', 6000);
-    toast(t('password_reset_done'), 'success');
-    setResetDone({ m: sel, password: newPass });
+    toast(t('pin_reset_done'), 'success');
+    setResetDone({ m: sel, pin: newPin });
   };
-  const openSel = (p) => { setSel(p); setEdit({ full_name: p.full_name, name_te: p.name_te || '' }); setNewPass(genPassword()); setResetDone(null); };
+  const openSel = (p) => { setSel(p); setEdit({ full_name: p.full_name, name_te: p.name_te || '' }); setNewPin(genPin()); setResetDone(null); };
   const isMe = sel && sel.id === me.id;
 
   return (
@@ -160,13 +160,13 @@ export default function Members() {
       )}
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title={t('add_member')}>
-        {created ? <CredentialsCard m={created.m} password={created.password} settings={settings} /> : nf && (
+        {created ? <CredentialsCard m={created.m} pin={created.pin} settings={settings} /> : nf && (
           <div className="stack">
             <Field label={`${t('full_name')} *`}><input className="input" value={nf.full_name} onChange={(e) => setNf({ ...nf, full_name: e.target.value })} /></Field>
             <Field label={t('name_te_label')} optional><input className="input" value={nf.name_te} onChange={(e) => setNf({ ...nf, name_te: e.target.value })} /></Field>
-            <Field label={`${t('mobile')} *`}><input className="input big" inputMode="numeric" placeholder="98765 43210" value={nf.mobile} onChange={(e) => setNf({ ...nf, mobile: e.target.value })} /></Field>
-            <Field label={t('password')} hint={t('password_min')}>
-              <div className="row"><input className="input mono grow" value={nf.password} onChange={(e) => setNf({ ...nf, password: e.target.value })} /><button type="button" className="btn ghost sm" onClick={() => setNf({ ...nf, password: genPassword() })}>{t('generate')}</button></div>
+            <Field label={`${t('mobile')} *`}><MobileInput value={nf.mobile} onChange={(v) => setNf({ ...nf, mobile: v })} autoComplete="off" data-testid="member-mobile" /></Field>
+            <Field label={t('pin')} hint={t('pin_member_hint')}>
+              <div className="row"><input className="input mono grow pin-plain" inputMode="numeric" autoComplete="off" value={nf.pin} onChange={(e) => setNf({ ...nf, pin: digits6(e.target.value) })} data-testid="member-pin" /><button type="button" className="btn ghost sm" onClick={() => setNf({ ...nf, pin: genPin() })}>{t('generate')}</button></div>
             </Field>
             <Field label={t('role')} hint={nf.role === 'admin' ? t('role_admin_hint') : t('role_member_hint')}>
               <Seg value={nf.role} onChange={(v) => setNf({ ...nf, role: v })} options={[{ value: 'member', label: t('member') }, { value: 'admin', label: t('admin') }]} />
@@ -177,7 +177,7 @@ export default function Members() {
       </Modal>
 
       <Modal open={!!sel} onClose={() => setSel(null)} title={sel ? `${t('member_details')}` : ''}>
-        {sel && edit && (resetDone ? <CredentialsCard m={resetDone.m} password={resetDone.password} settings={settings} /> : (
+        {sel && edit && (resetDone ? <CredentialsCard m={resetDone.m} pin={resetDone.pin} settings={settings} /> : (
           <div className="stack">
             <div className="row">
               <div className="avatar">{(sel.full_name || '?')[0].toUpperCase()}</div>
@@ -199,9 +199,10 @@ export default function Members() {
               </div>
             )}
             <div className="card stack tight" style={{ background: '#fbf7f1' }}>
-              <div className="card-title" style={{ marginBottom: 0 }}>{t('reset_password')}</div>
-              <div className="row"><input className="input mono grow" value={newPass} onChange={(e) => setNewPass(e.target.value)} /><button className="btn ghost sm" onClick={() => setNewPass(genPassword())}>{t('generate')}</button></div>
-              <button className="btn ghost block" disabled={busy} onClick={doReset}>{t('reset_password')}</button>
+              <div className="card-title" style={{ marginBottom: 0 }}>{t('reset_pin')}</div>
+              <div className="row"><input className="input mono grow pin-plain" inputMode="numeric" autoComplete="off" value={newPin} onChange={(e) => setNewPin(digits6(e.target.value))} data-testid="reset-pin" /><button className="btn ghost sm" onClick={() => setNewPin(genPin())}>{t('generate')}</button></div>
+              <span className="hint">{t('pin_member_hint')}</span>
+              <button className="btn ghost block" disabled={busy} onClick={doReset} data-testid="reset-pin-btn">{t('reset_pin')}</button>
             </div>
           </div>
         ))}

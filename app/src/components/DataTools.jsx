@@ -7,7 +7,8 @@ import { inr, fmtDateTime } from '../lib/format.js';
 import { errMsg } from '../lib/errors.js';
 import { REQUIRED_DB_VERSION, getDbVersion, setupSqlText } from '../lib/dbVersion.js';
 import * as DT from '../lib/dataTools.js';
-import { Field, Modal, Seg, Spinner, Switch, useToast, copyText } from './ui.jsx';
+import { Field, Modal, Seg, Spinner, Switch, useToast, copyText, PinInput } from './ui.jsx';
+import { isPin } from '../lib/supabase.js';
 
 /** undefined = checking, null = unknown (offline), number = version */
 export function useDbVersion() {
@@ -300,7 +301,7 @@ function DeleteFlow({ onClose, onDeleted }) {
       )}
 
       {step === 2 && c && (
-        <form className="stack" data-testid="delete-step2" onSubmit={(e) => { e.preventDefault(); if (wordOk && password.length >= 6 && !busy) submit(); }}>
+        <form className="stack" data-testid="delete-step2" onSubmit={(e) => { e.preventDefault(); if (wordOk && isPin(password) && !busy) submit(); }} noValidate>
           <div className="alert err" style={{ display: 'block' }}>
             {t('delete_final_warn', { d: c.donations, e: c.expenses, b: c.bills, h: c.handovers })}
             {removeMembers && <><br />{t('delete_final_members', { n: info.members })}</>}
@@ -310,13 +311,12 @@ function DeleteFlow({ onClose, onDeleted }) {
               autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} data-testid="delete-word" />
           </Field>
           <Field label={t('delete_password')}>
-            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password" data-testid="delete-password" />
+            <PinInput value={password} onChange={setPassword} autoComplete="current-password" data-testid="delete-password" />
           </Field>
           {err && <div className="alert err" data-testid="delete-error">{err}</div>}
           <div className="grid2">
             <button type="button" className="btn ghost" disabled={busy} onClick={() => setStep(1)}>{t('back')}</button>
-            <button type="submit" className="btn danger" disabled={!wordOk || password.length < 6 || busy} data-testid="delete-final">
+            <button type="submit" className="btn danger" disabled={!wordOk || !isPin(password) || busy} data-testid="delete-final">
               {busy ? t('deleting') : t('delete_final_btn')}
             </button>
           </div>

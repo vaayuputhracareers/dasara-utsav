@@ -2,8 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
+import { LANG_KEY } from './lib/i18n.jsx';
 
-document.documentElement.lang = localStorage.getItem('utsav.lang') || 'te';
+document.documentElement.lang = localStorage.getItem(LANG_KEY) || 'en';
 
 // "/dasara-utsav" → "/dasara-utsav/" (the app lives in that folder on GitHub Pages)
 const BASE = import.meta.env.BASE_URL;

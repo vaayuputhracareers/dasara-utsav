@@ -1,6 +1,6 @@
 /* Light offline cache for the app shell. Supabase data is never cached.
    Works at any address: https://site.netlify.app/ or https://name.github.io/dasara-utsav/ */
-const CACHE = 'utsav-v2';
+const CACHE = 'dasara-v3';
 const BASE = new URL('./', self.location).pathname; // "/" or "/dasara-utsav/"
 const INDEX = BASE + 'index.html';
 const SHELL = [BASE, INDEX, BASE + 'manifest.webmanifest', BASE + 'icons/icon-192.png'];

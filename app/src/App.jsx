@@ -6,7 +6,8 @@ import { ToastProvider, Splash } from './components/ui.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { SettingsProvider } from './context/SettingsContext.jsx';
 import Layout from './components/Layout.jsx';
-import { Login, Signup, Waiting, SetupNeeded } from './pages/Auth.jsx';
+import { Login, Signup, Waiting, SetupNeeded, SetPin } from './pages/Auth.jsx';
+import { needsPin } from './lib/pin.js';
 import MemberHome from './pages/MemberHome.jsx';
 import NewDonation from './pages/NewDonation.jsx';
 import ReceiptDone from './pages/ReceiptDone.jsx';
@@ -41,6 +42,8 @@ function Private() {
       </Routes>
     );
   }
+  // Accounts from before the switch to PINs choose a 6-digit PIN once (blocked/closed accounts don't).
+  if (profile && (profile.status === 'active' || profile.status === 'pending') && needsPin(session)) return <SetPin />;
   if (!profile || profile.status !== 'active') return <Waiting />;
   return (
     <SettingsProvider>

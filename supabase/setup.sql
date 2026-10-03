@@ -6,7 +6,7 @@
 --  Safe to run again later (it only adds what is missing / updates logic).
 --
 --  What it creates:
---    • profiles        – admin & team members (login = mobile number)
+--    • profiles        – admin & team members (login = mobile number + 6-digit PIN)
 --    • member_invites  – accounts the admin is creating
 --    • app_settings    – ALL editable names/settings (temple, committee…)
 --    • donations       – every receipt, stamped with the collector
@@ -867,9 +867,11 @@ create or replace function public.admin_reset_password(p_user uuid, p_password t
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   if not public.is_admin() then raise exception 'not_allowed'; end if;
-  if p_password is null or length(p_password) < 6 then raise exception 'password_too_short'; end if;
+  -- Logins use a 6-digit PIN (the PIN is stored as the account password).
+  if p_password is null or p_password !~ '^[0-9]{6}$' then raise exception 'pin_invalid'; end if;
   update auth.users
      set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf', 10)),
+         raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb) || '{"pin_set": true}'::jsonb,
          updated_at = now()
    where id = p_user;
   if not found then raise exception 'not_found'; end if;
@@ -889,7 +891,7 @@ end $$;
 -- Version of this script. The app compares it with the version it needs and tells the admin
 -- "database update needed" (= run this file again) when it is older.
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 2 $$;
+language sql immutable set search_path = '' as $$ select 3 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1019,6 +1021,11 @@ create policy "utsav assets update" on storage.objects for update to authenticat
   using (bucket_id = 'assets' and public.is_admin());
 drop policy if exists "utsav assets delete" on storage.objects;
 create policy "utsav assets delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'assets' and public.is_admin());
+-- Saving a file returns its details, which needs read access (without this the logo upload failed
+-- with "permission denied"). Visitors still see the logo through its public link.
+drop policy if exists "utsav assets read" on storage.objects;
+create policy "utsav assets read" on storage.objects for select to authenticated
   using (bucket_id = 'assets' and public.is_admin());
 
 -- refresh the API so the new tables/functions are visible immediately

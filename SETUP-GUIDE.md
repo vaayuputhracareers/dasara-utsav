@@ -96,7 +96,7 @@ Never send the secret key or database password.)*
 
 ## Part D: First time inside the app
 
-1. Open the website on your phone → **కొత్త ఖాతా సృష్టించండి / Create an account** → your name, mobile, password.
+1. Open the website on your phone → **Create an account / కొత్త ఖాతా సృష్టించండి** → your name, mobile, a **6-digit PIN**.
    👉 **The first account becomes the Admin** (that's you). Do this right after Part C.
 2. **☰ మరిన్ని / More → ⚙️ Settings**: fill in and **Save**:
    - Temple name, committee name, village, street (Telugu + English)
@@ -104,15 +104,19 @@ Never send the secret key or database password.)*
    - Temple UPI ID + account name, quick amounts (116, 516, 1116 …)
    - Donation purposes, expense categories
    - The Telugu WhatsApp receipt message (tap the tags to insert; live preview below)
-   - Logo / deity photo (optional)
+   - Logo / deity photo (optional): a **square picture, 512 × 512 px** (JPG or PNG). It is shown in a circle.
    - *App web address*: **leave empty**. The app detects its address by itself (`https://USERNAME.github.io/dasara-utsav` or your own subdomain).
-3. **☰ More → 👥 Members → ➕ Add member** → name, Telugu name, mobile, password →
+3. **☰ More → 👥 Members → ➕ Add member** → name, Telugu name, mobile. A random **6-digit PIN** is filled in
+   (🎲 New gives another one) →
    **Send login details on WhatsApp**. Repeat for each team member.
    (You can also let members sign up themselves. They wait for your approval.)
 4. **☰ More → 📅 Programs** → *Fill sample Navaratri alankaram list* → edit each day → add programs with timings.
 5. **☰ More → 📱 Public page & QR** → switch ON the sections visitors may see →
    turn the page **ON** → **Download QR poster** → print it and keep it at the temple.
-6. On every phone: open the link in **Chrome → ⋮ → Add to Home screen** so it opens like an app.
+6. On every phone: open the link in **Chrome → ⋮ → Add to Home screen** so it opens like an app (the icon is called **Dasara**).
+
+The app opens in **English**. Tap **తెలుగు** at the top to switch; each phone remembers its choice. WhatsApp receipts
+stay in Telugu.
 
 ---
 
@@ -169,10 +173,21 @@ add the TXT record that GitHub shows to Cloudflare DNS → **Verify**. This stop
 3. **🗑️ Delete data** (two steps, admin only):
    - Step 1 shows exactly what will be deleted, warns about cash still with members, and marks each year
      ✅ exported / ⚠️ not exported (with an **Export now** button). Tick *"I have exported the data…"*.
-   - Step 2: type **DELETE** and your admin **password**. After 5 wrong passwords it is locked for 15 minutes.
+   - Step 2: type **DELETE** and your 6-digit admin **PIN**. After 5 wrong PINs it is locked for 15 minutes.
    - Kept: settings, logo and member logins. Optionally you can also remove the member logins.
      Receipt numbers restart at 0001.
 4. For the new year: in Settings change **Year**, **dates** and **Receipt prefix** (e.g. `DSR27`) → **Save**.
+
+## 🔢 Logins with a 6-digit PIN
+
+Everybody logs in with **mobile number + 6-digit PIN**.
+
+- Accounts made before the switch to PINs: the next time the app opens, it asks once
+  **"Set your 6-digit PIN"**. After that the old password no longer works.
+- Logged out and only remember the old password? On the login screen tap **"Still have an old password? Log in with it"**,
+  log in once, then set the PIN.
+- The admin can always give a member a new PIN: **Members → tap the member → 🔢 Reset PIN → send on WhatsApp**.
+- To change your own PIN: **👤 Me → 🔢 Change PIN**.
 
 ## 🛠️ When the app says "Database update needed"
 
@@ -196,20 +211,26 @@ Some new features need a one-time change in Supabase. **Your data stays as it is
   Set it to **DNS only** (grey cloud) and wait a few minutes.
 - **Don't rename the repository or the GitHub username during the festival.** The website address
   would change and printed QR posters would stop working.
-- **Member forgot password** → Members → tap the member → **Reset password** → send on WhatsApp.
-  Members can also change their own password in **👤 Me**.
-- **Admin forgot password** → another admin can reset it, or in Supabase **SQL Editor** run
-  (replace the mobile number and new password):
+- **Member forgot the PIN** → Members → tap the member → **🔢 Reset PIN** → send on WhatsApp.
+  Members can also change their own PIN in **👤 Me**.
+- **Admin forgot the PIN** → another admin can reset it, or in Supabase **SQL Editor** run
+  (replace the mobile number and the 6-digit PIN):
   ```sql
   update auth.users
-     set encrypted_password = extensions.crypt('NewPass123', extensions.gen_salt('bf'))
+     set encrypted_password = extensions.crypt('482915', extensions.gen_salt('bf')),
+         raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb) || '{"pin_set": true}'::jsonb
    where email = '9876543210@members.utsav.invalid';
   ```
+- **"Supabase did not accept this PIN"** → Supabase → **Authentication → Sign In / Providers → Email**:
+  *Minimum password length* **6** and *Password requirements* **none** (these are the normal settings).
+- **The phone icon still says "Utsav"** → long-press the icon → **Remove**, then open the website in Chrome →
+  **⋮ → Add to Home screen** again (iPhone: Safari → Share → Add to Home Screen).
+- **Logo upload says "no permission"** → the database update is missing: see *"Database update needed"* above.
 - **Wrong entry** → only the admin can cancel a receipt, and a reason is required. It stays in the records as *Cancelled*, and the donor's receipt link shows *Cancelled*.
 - **"Sign-up is closed"** → self sign-up is OFF in Settings → create the member from **Members**.
 - **Message about "Confirm email"** → repeat Part A, step 4.
 - **WhatsApp does not open** → check WhatsApp is installed; or use **SMS** / **Copy message**.
-- **Nothing is ever deleted**: every cancellation, edit, approval, handover and password reset is listed in **☰ More → 📜 Change history**.
+- **Nothing is ever deleted**: every cancellation, edit, approval, handover and PIN reset is listed in **☰ More → 📜 Change history**.
 - **Privacy**: members see only their own receipts; the public QR page never shows mobile numbers or bill photos.
 - **Supabase free plan**: a project that is unused for about a week is *paused* (data is safe). Open supabase.com and click **Restore**. Download the Excel report after the festival as a backup.
 - **Next festival** (Ganesh Chaturthi, Sankranti…): change the title, dates and receipt prefix in Settings, or create a fresh Supabase project, repeat Part A and update `config.js`.

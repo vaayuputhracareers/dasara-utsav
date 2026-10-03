@@ -4,10 +4,11 @@ import { useLang } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { errMsg } from '../lib/errors.js';
-import { compressImage } from '../lib/image.js';
+import { compressImage, imageExt } from '../lib/image.js';
 import { DEFAULT_TEMPLATE, TEMPLATE_TAGS, appBaseUrl, buildReceiptMessage } from '../lib/receipt.js';
 import { Page, Field, Switch, useToast } from '../components/ui.jsx';
 import { ExportCard, DeleteCard, useDbVersion } from '../components/DataTools.jsx';
+import { REQUIRED_DB_VERSION } from '../lib/dbVersion.js';
 
 const FIELDS = ['temple_name_te', 'temple_name_en', 'committee_name_te', 'committee_name_en', 'village_te', 'village_en',
   'address_te', 'address_en', 'contact_phone', 'logo_url', 'event_title_te', 'event_title_en', 'event_year', 'start_date',
@@ -84,14 +85,22 @@ export default function SettingsPage() {
     if (!file) return;
     setUploading(true);
     try {
-      const blob = await compressImage(file, 600, 0.85);
-      const path = `logo-${Date.now()}.jpg`;
-      const { error } = await supabase.storage.from('assets').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+      // 512 px is plenty for the round logo; PNG/WebP logos stay PNG so a see-through background stays see-through.
+      const blob = await compressImage(file, 512, 0.88, { keepAlpha: true });
+      const type = blob.type || 'image/jpeg';
+      const path = `logo-${Date.now()}.${imageExt(type)}`;
+      // A new file name every time, so no "upsert" (overwriting needs extra storage permissions).
+      const { error } = await supabase.storage.from('assets').upload(path, blob, { contentType: type, cacheControl: '31536000' });
       if (error) throw error;
       const { data } = supabase.storage.from('assets').getPublicUrl(path);
       set('logo_url', data.publicUrl);
       toast(t('logo_uploaded'), 'success');
-    } catch (e) { toast(errMsg(e, t), 'error', 5000); }
+    } catch (e) {
+      const msg = errMsg(e, t);
+      // Databases set up before version 3 lack a storage permission the upload needs.
+      const old = typeof dbVersion === 'number' && dbVersion < REQUIRED_DB_VERSION && msg === t('err_not_allowed');
+      toast(old ? t('logo_db_update') : msg, 'error', 8000);
+    }
     setUploading(false);
   };
 
@@ -128,7 +137,7 @@ export default function SettingsPage() {
         <Pair label={t('village')} k="village" f={f} set={set} />
         <Pair label={t('address')} k="address" f={f} set={set} />
         <Field label={t('contact_phone')} optional><input className="input num" inputMode="tel" value={f.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} /></Field>
-        <Field label={t('logo')} optional>
+        <Field label={t('logo_label')} hint={t('logo_hint')}>
           <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadLogo(e.target.files?.[0])} />
           <div className="row">
             {f.logo_url ? <img src={f.logo_url} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--line)' }} /> : <div style={{ fontSize: 40 }}>🪔</div>}

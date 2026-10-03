@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLang, LangSwitch } from '../lib/i18n.jsx';
+import { toMobile10 } from '../lib/supabase.js';
 
 /* ---------- toast ---------- */
 const ToastCtx = createContext(() => {});
@@ -67,6 +68,30 @@ export function Field({ label, hint, error, children, optional }) {
       {label && <label>{label}{optional && <span style={{ fontWeight: 500 }}> ({t('optional')})</span>}</label>}
       {children}
       {error ? <span className="err">{error}</span> : hint ? <span className="hint">{hint}</span> : null}
+    </div>
+  );
+}
+
+/** Mobile number box: starts empty, keeps digits only, never more than 10. (No maxLength attribute:
+ *  it would cut a pasted "+91 98765 43210" before the +91 is removed.) */
+export function MobileInput({ value, onChange, className = 'input big', ...rest }) {
+  return (
+    <input className={className} type="text" inputMode="numeric" value={value}
+      onChange={(e) => onChange(toMobile10(e.target.value))} {...rest} />
+  );
+}
+
+/** 6-digit PIN box: number keypad, digits only, hidden as dots with a 👁️ button to check what was typed. */
+export function PinInput({ value, onChange, autoComplete = 'current-password', ...rest }) {
+  const { t } = useLang();
+  const [show, setShow] = useState(false);
+  return (
+    <div className="pin-wrap">
+      <input className="input pin" type={show ? 'text' : 'password'} inputMode="numeric" autoComplete={autoComplete}
+        value={value} onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))} {...rest} />
+      <button type="button" className="pin-eye" onClick={() => setShow((x) => !x)} aria-label={show ? t('pin_hide') : t('pin_show')} title={show ? t('pin_hide') : t('pin_show')}>
+        {show ? '🙈' : '👁️'}
+      </button>
     </div>
   );
 }

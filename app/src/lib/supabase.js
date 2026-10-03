@@ -39,6 +39,10 @@ export function cleanMobile(v) {
 }
 export const isValidMobile = (m) => /^[6-9][0-9]{9}$/.test(cleanMobile(m));
 export const mobileToEmail = (m) => `${cleanMobile(m)}@${LOGIN_DOMAIN}`;
+/** What a mobile box keeps while typing/pasting: digits only, at most 10 ("+91 98765 43210" → "9876543210"). */
+export const toMobile10 = (v) => cleanMobile(v).slice(0, 10);
+/** Logins use a 6-digit PIN (stored as the account password). */
+export const isPin = (v) => /^[0-9]{6}$/.test(String(v || ''));
 
 /** Fetch every row of a query, 1000 at a time (Supabase returns max 1000 per call). */
 export async function fetchAll(build, pageSize = 1000) {

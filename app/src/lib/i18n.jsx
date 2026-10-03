@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 /* Every label in the app: [Telugu, English] */
 const D = {
   // common
-  app_name: ['దసరా ఉత్సవ యాప్', 'Dasara Utsav App'],
+  app_name: ['దసరా', 'Dasara'],
   save: ['సేవ్ చేయండి', 'Save'],
   saving: ['సేవ్ అవుతోంది…', 'Saving…'],
   saved: ['సేవ్ అయింది ✅', 'Saved ✅'],
@@ -67,17 +67,17 @@ const D = {
   nav_my_receipts: ['నా రసీదులు', 'My receipts'],
   nav_history: ['మార్పుల చరిత్ర', 'Change history'],
   more_handover_sub: ['రోజు చివర సభ్యుల నుండి నగదు', 'Day-end cash from members'],
-  more_members_sub: ['ఖాతాలు, ఆమోదాలు, పాస్‌వర్డ్‌లు', 'Accounts, approvals, passwords'],
+  more_members_sub: ['ఖాతాలు, ఆమోదాలు, PIN లు', 'Accounts, approvals, PINs'],
   more_programs_sub: ['షెడ్యూల్ & అలంకారాలు', 'Schedule & alankarams'],
   more_public_sub: ['భక్తులు ఏమి చూడాలో ఎంచుకోండి', 'Choose what visitors see'],
   more_settings_sub: ['ఆలయం, కమిటీ, రసీదు మెసేజ్', 'Temple, committee, receipt text'],
   more_history_sub: ['రద్దులు, మార్పులు, అప్పగింతలు', 'Cancellations, edits, handovers'],
-  more_me_sub: ['భాష, పాస్‌వర్డ్, లాగౌట్', 'Language, password, log out'],
+  more_me_sub: ['భాష, PIN, లాగౌట్', 'Language, PIN, log out'],
 
   // auth
   login_btn: ['లాగిన్ అవ్వండి', 'Log in'],
   logging_in: ['లాగిన్ అవుతోంది…', 'Logging in…'],
-  login_failed: ['మొబైల్ నంబర్ లేదా పాస్‌వర్డ్ తప్పు', 'Wrong mobile number or password'],
+  login_failed: ['మొబైల్ నంబర్ లేదా PIN తప్పు', 'Wrong mobile number or PIN'],
   no_account: ['ఖాతా లేదా?', "Don't have an account?"],
   create_account: ['కొత్త ఖాతా సృష్టించండి', 'Create an account'],
   have_account: ['ఇప్పటికే ఖాతా ఉందా?', 'Already have an account?'],
@@ -87,11 +87,38 @@ const D = {
   full_name: ['పూర్తి పేరు', 'Full name'],
   name_te_label: ['తెలుగులో పేరు (రసీదుల కోసం)', 'Name in Telugu (for receipts)'],
   confirm_password: ['పాస్‌వర్డ్ మళ్ళీ', 'Confirm password'],
-  password_min: ['పాస్‌వర్డ్ కనీసం 6 అక్షరాలు ఉండాలి', 'Password must be at least 6 characters'],
+  password_min: ['PIN సరిగ్గా 6 అంకెలు ఉండాలి', 'The PIN must be exactly 6 digits'],
   password_mismatch: ['పాస్‌వర్డ్‌లు సరిపోలలేదు', 'Passwords do not match'],
   mobile_invalid: ['సరైన 10 అంకెల మొబైల్ నంబర్ ఇవ్వండి', 'Enter a valid 10-digit mobile number'],
+  pin: ['6 అంకెల PIN', '6-digit PIN'],
+  pin_short: ['PIN', 'PIN'],
+  pin_hint: ['సరిగ్గా 6 అంకెలు', 'Exactly 6 digits'],
+  pin_member_hint: ['సభ్యులు ఈ 6 అంకెల PIN తో లాగిన్ అవుతారు; తర్వాత "నేను" ట్యాబ్‌లో మార్చుకోవచ్చు.', 'The member logs in with this 6-digit PIN and can change it later in the "Me" tab.'],
+  new_pin: ['కొత్త 6 అంకెల PIN', 'New 6-digit PIN'],
+  confirm_pin: ['PIN మళ్ళీ ఇవ్వండి', 'Confirm PIN'],
+  pin_invalid: ['PIN సరిగ్గా 6 అంకెలు ఉండాలి', 'The PIN must be exactly 6 digits'],
+  err_pin_invalid: ['PIN సరిగ్గా 6 అంకెలు ఉండాలి', 'The PIN must be exactly 6 digits'],
+  pin_mismatch: ['రెండు PIN లు ఒకటి కాలేదు', 'The two PINs do not match'],
+  change_pin: ['🔢 PIN మార్చండి', '🔢 Change PIN'],
+  pin_changed: ['PIN సేవ్ అయింది ✅', 'PIN saved ✅'],
+  reset_pin: ['🔢 PIN రీసెట్', '🔢 Reset PIN'],
+  pin_reset_done: ['PIN మార్చబడింది ✅', 'PIN changed ✅'],
+  pin_show: ['PIN చూపించు', 'Show PIN'],
+  pin_hide: ['PIN దాచు', 'Hide PIN'],
+  old_password_link: ['పాత పాస్‌వర్డ్ ఉందా? దానితో లాగిన్ అవ్వండి', 'Still have an old password? Log in with it'],
+  use_pin_link: ['← 6 అంకెల PIN తో లాగిన్', '← Log in with 6-digit PIN'],
+  old_password: ['పాత పాస్‌వర్డ్', 'Old password'],
+  old_password_hint: ['లాగిన్ అయిన వెంటనే కొత్త 6 అంకెల PIN సెట్ చేయమని అడుగుతుంది.', 'Right after logging in you will be asked to set a 6-digit PIN.'],
+  set_pin_title: ['మీ 6 అంకెల PIN సెట్ చేయండి', 'Set your 6-digit PIN'],
+  set_pin_text: ['ఇకపై లాగిన్‌కు పాస్‌వర్డ్ బదులు 6 అంకెల PIN వాడతాం. ఒక్కసారి సెట్ చేస్తే చాలు — తర్వాత మొబైల్ నంబర్ + ఈ PIN తో లాగిన్ అవ్వండి.', 'Logins now use a 6-digit PIN instead of a password. Set it once — next time log in with your mobile number and this PIN.'],
+  set_pin_btn: ['PIN సేవ్ చేయండి', 'Save PIN'],
+  err_weak_pin: ['Supabase ఈ PIN ని అంగీకరించలేదు. అడ్మిన్: Supabase → Authentication → Sign In / Providers → Email లో "Minimum password length" = 6, "Password requirements" = ఏవీ వద్దు అని పెట్టండి.', 'Supabase did not accept this PIN. Admin: in Supabase → Authentication → Sign In / Providers → Email set "Minimum password length" to 6 and "Password requirements" to none.'],
+  err_relogin: ['భద్రత కోసం: లాగౌట్ చేసి, మళ్ళీ లాగిన్ అయ్యి ప్రయత్నించండి.', 'For safety: log out, log in again, then try once more.'],
+  err_same_pin: ['ఇదే మీ ప్రస్తుత PIN. వేరే PIN ఇవ్వండి.', 'That is already your PIN. Choose a different one.'],
+  logo_label: ['లోగో / దేవత ఫోటో (512 × 512 px)', 'Logo / deity photo (512 × 512 px)'],
+  logo_hint: ['ఐచ్ఛికం. చతురస్రాకార చిత్రం (JPG లేదా PNG) బాగుంటుంది — ఇది వృత్తంలో కనిపిస్తుంది, కాబట్టి ముఖ్య భాగం మధ్యలో ఉంచండి.', 'Optional. A square picture (JPG or PNG) works best — it is shown inside a circle, so keep the main part in the centre.'],
+  logo_db_update: ['లోగో అప్‌లోడ్‌కు ముందుగా డేటాబేస్ అప్‌డేట్ కావాలి: డాష్‌బోర్డ్‌లో "📋 SQL కాపీ" నొక్కి, Supabase SQL Editor లో పేస్ట్ చేసి Run నొక్కండి.', 'The logo upload needs a database update first: tap "📋 Copy SQL" on the Dashboard, paste it in the Supabase SQL Editor and press Run.'],
   signup_closed: ['కొత్త నమోదు ప్రస్తుతం మూసివేయబడింది. మీ ఖాతా సృష్టించమని అడ్మిన్‌ను అడగండి.', 'Sign-up is closed. Please ask the admin to create your account.'],
-  first_admin_hint: ['💡 ఈ యాప్‌లో మొదట సృష్టించిన ఖాతా అడ్మిన్ అవుతుంది', '💡 The first account created in this app becomes the Admin'],
   waiting_title: ['అడ్మిన్ ఆమోదం కోసం వేచి ఉంది', 'Waiting for admin approval'],
   waiting_text: ['మీ ఖాతా సృష్టించబడింది. అడ్మిన్ ఆమోదించిన తర్వాత మీరు విరాళాలు సేకరించవచ్చు.', 'Your account is created. You can start collecting once the admin approves it.'],
   blocked_title: ['మీ ఖాతా నిలిపివేయబడింది', 'Your account is blocked'],
@@ -299,8 +326,8 @@ const D = {
   generate: ['🎲 కొత్తది', '🎲 New'],
   role_member_hint: ['సభ్యుడు: విరాళాలు సేకరిస్తారు, తమ రసీదులు మాత్రమే చూస్తారు', 'Member: collects donations, sees only their own receipts'],
   role_admin_hint: ['అడ్మిన్: అన్నీ చూస్తారు, ఆమోదిస్తారు, సెట్టింగ్స్ మారుస్తారు', 'Admin: sees everything, approves, changes settings'],
-  login_message: ['🙏 నమస్కారం {name} గారు,\n{event} యాప్‌లో మీ ఖాతా సిద్ధంగా ఉంది.\n\n🔗 లింక్: {url}\n📱 మొబైల్: {mobile}\n🔑 పాస్‌వర్డ్: {password}\n\nలాగిన్ అయిన తర్వాత "నేను" ట్యాబ్‌లో పాస్‌వర్డ్ మార్చుకోవచ్చు.',
-                  '🙏 Namaskaram {name},\nYour account for the {event} app is ready.\n\n🔗 Link: {url}\n📱 Mobile: {mobile}\n🔑 Password: {password}\n\nYou can change the password in the "Me" tab after logging in.'],
+  login_message: ['🙏 నమస్కారం {name} గారు,\n{event} యాప్‌లో మీ ఖాతా సిద్ధంగా ఉంది.\n\n🔗 లింక్: {url}\n📱 మొబైల్: {mobile}\n🔢 PIN: {pin}\n\nలాగిన్ అయిన తర్వాత "నేను" ట్యాబ్‌లో PIN మార్చుకోవచ్చు.',
+                  '🙏 Namaskaram {name},\nYour account for the {event} app is ready.\n\n🔗 Link: {url}\n📱 Mobile: {mobile}\n🔢 PIN: {pin}\n\nYou can change the PIN in the "Me" tab after logging in.'],
 
   // settings
   sec_temple: ['🛕 ఆలయం & కమిటీ', '🛕 Temple & committee'],
@@ -399,7 +426,7 @@ const D = {
   audit_expense_rejected: ['ఖర్చు తిరస్కరణ', 'Expense rejected'],
   audit_expense_pending: ['ఖర్చు మార్పు', 'Expense changed'],
   audit_member_changed: ['సభ్యుని మార్పు', 'Member changed'],
-  audit_password_reset: ['పాస్‌వర్డ్ రీసెట్', 'Password reset'],
+  audit_password_reset: ['PIN రీసెట్', 'PIN reset'],
   audit_public_link_changed: ['పబ్లిక్ లింక్ మార్పు', 'Public link changed'],
   by_x: ['{name} చేశారు', 'by {name}'],
 
@@ -412,7 +439,7 @@ const D = {
   err_last_admin: ['కనీసం ఒక అడ్మిన్ ఉండాలి', 'There must be at least one active admin'],
   err_cannot_change_own_role: ['మీ స్వంత పాత్ర / స్థితి మీరు మార్చలేరు', 'You cannot change your own role or status'],
   err_reason_required: ['కారణం తప్పనిసరి', 'A reason is required'],
-  err_password_too_short: ['పాస్‌వర్డ్ కనీసం 6 అక్షరాలు ఉండాలి', 'Password must be at least 6 characters'],
+  err_password_too_short: ['PIN సరిగ్గా 6 అంకెలు ఉండాలి', 'The PIN must be exactly 6 digits'],
   err_cannot_handover_self: ['మీకు మీరే అప్పగించలేరు', 'You cannot hand over to yourself'],
   err_not_found: ['కనబడలేదు లేదా ఇప్పటికే మార్చబడింది', 'Not found, or already changed'],
   err_signup_closed: ['కొత్త నమోదు మూసివేయబడింది. అడ్మిన్‌ను అడగండి.', 'Sign-up is closed. Please ask the admin.'],
@@ -472,12 +499,12 @@ const D = {
   delete_final_warn: ['ఇది తిరిగి పొందలేని చర్య: {d} విరాళాలు, {e} ఖర్చులు, {b} బిల్లు ఫోటోలు, {h} నగదు అప్పగింతలు శాశ్వతంగా తొలగిపోతాయి.', 'This cannot be undone: {d} donations, {e} expenses, {b} bill photos and {h} cash handovers will be deleted permanently.'],
   delete_final_members: ['సభ్యుల లాగిన్‌లు ({n}) కూడా తొలగిపోతాయి.', 'Member logins ({n}) will also be removed.'],
   delete_type_word: ['నిర్ధారించడానికి DELETE అని టైప్ చేయండి', 'Type DELETE to confirm'],
-  delete_password: ['మీ అడ్మిన్ పాస్‌వర్డ్', 'Your admin password'],
+  delete_password: ['మీ అడ్మిన్ PIN (6 అంకెలు)', 'Your admin PIN (6 digits)'],
   delete_final_btn: ['🗑️ శాశ్వతంగా తొలగించండి', '🗑️ Delete permanently'],
   deleting: ['తొలగిస్తోంది…', 'Deleting…'],
   delete_wrong_word: ['DELETE అని ఖచ్చితంగా ఇంగ్లీష్ పెద్ద అక్షరాలతో టైప్ చేయండి', 'Type DELETE exactly, in capital letters'],
-  delete_wrong_password: ['పాస్‌వర్డ్ తప్పు. ఇంకా {n} ప్రయత్నాలు మిగిలాయి.', 'Wrong password. {n} tries left.'],
-  delete_locked: ['చాలాసార్లు తప్పు పాస్‌వర్డ్ ఇచ్చారు. 15 నిమిషాల తర్వాత మళ్ళీ ప్రయత్నించండి.', 'Too many wrong passwords. Try again after 15 minutes.'],
+  delete_wrong_password: ['PIN తప్పు. ఇంకా {n} ప్రయత్నాలు మిగిలాయి.', 'Wrong PIN. {n} tries left.'],
+  delete_locked: ['చాలాసార్లు తప్పు PIN ఇచ్చారు. 15 నిమిషాల తర్వాత మళ్ళీ ప్రయత్నించండి.', 'Too many wrong PINs. Try again after 15 minutes.'],
   delete_done_title: ['డేటా తొలగించబడింది ✅', 'Data deleted ✅'],
   delete_done_text: ['{d} విరాళాలు, {e} ఖర్చులు, {h} నగదు అప్పగింతలు, {p} కార్యక్రమాలు/అలంకారాలు, {b} బిల్లు ఫోటోలు తొలగించబడ్డాయి.', 'Deleted {d} donations, {e} expenses, {h} cash handovers, {p} programs/alankaram and {b} bill photos.'],
   delete_done_members: ['{n} సభ్యుల లాగిన్‌లు తొలగించబడ్డాయి.', '{n} member logins removed.'],
@@ -494,17 +521,19 @@ const D = {
   db_sql_copied: ['SQL కాపీ అయింది — Supabase SQL Editor లో పేస్ట్ చేసి Run నొక్కండి', 'SQL copied — paste it in the Supabase SQL Editor and press Run'],
   err_db_update_needed: ['ముందుగా డేటాబేస్ అప్‌డేట్ చేయాలి (సెట్టింగ్స్ → డేటా చూడండి)', 'The database needs an update first (see Settings → Data)'],
   audit_data_deleted: ['మొత్తం డేటా తొలగింపు', 'All data deleted'],
-  audit_delete_all_wrong_password: ['డేటా తొలగింపు — తప్పు పాస్‌వర్డ్', 'Delete data — wrong password'],
+  audit_delete_all_wrong_password: ['డేటా తొలగింపు — తప్పు PIN', 'Delete data — wrong PIN'],
   audit_data_exported: ['డేటా ఎగుమతి (Excel)', 'Data exported (Excel)'],
   audit_deleted_x: ['{d} విరాళాలు · {e} ఖర్చులు · {h} అప్పగింతలు', '{d} donations · {e} expenses · {h} handovers'],
 };
 
 export const DICT = D;
+export const LANG_KEY = 'dasara.lang';
 const LangCtx = createContext(null);
 
 export function LangProvider({ children }) {
-  const [lang, setLangState] = useState(() => localStorage.getItem('utsav.lang') || 'te');
-  const setLang = useCallback((l) => { localStorage.setItem('utsav.lang', l); setLangState(l); document.documentElement.lang = l; }, []);
+  // English first. (A new storage name, so phones that had Telugu saved by the old default start in English once.)
+  const [lang, setLangState] = useState(() => localStorage.getItem(LANG_KEY) || 'en');
+  const setLang = useCallback((l) => { localStorage.setItem(LANG_KEY, l); setLangState(l); document.documentElement.lang = l; }, []);
   const t = useCallback((key, vars) => {
     const e = D[key];
     let s = e ? (lang === 'te' ? e[0] : e[1]) : key;
