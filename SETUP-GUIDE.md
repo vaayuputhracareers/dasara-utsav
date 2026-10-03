@@ -160,6 +160,30 @@ add the TXT record that GitHub shows to Cloudflare DNS → **Verify**. This stop
 
 ---
 
+## 📦 After the festival: keep the records, start fresh next year
+
+1. **⚙️ Settings → 🗄️ Data → 📥 Export data**: choose the year → **Download Excel**, and also download
+   **Bill photos (ZIP)**. Keep both files safe (Google Drive / laptop). The Excel file has these sheets: Summary,
+   Donations, Expenses, Cash handovers, Members, Day-wise, Programs and Alankaram.
+2. Before deleting: confirm every member's **cash handover**, and approve or reject the waiting expenses.
+3. **🗑️ Delete data** (two steps, admin only):
+   - Step 1 shows exactly what will be deleted, warns about cash still with members, and marks each year
+     ✅ exported / ⚠️ not exported (with an **Export now** button). Tick *"I have exported the data…"*.
+   - Step 2: type **DELETE** and your admin **password**. After 5 wrong passwords it is locked for 15 minutes.
+   - Kept: settings, logo and member logins. Optionally you can also remove the member logins.
+     Receipt numbers restart at 0001.
+4. For the new year: in Settings change **Year**, **dates** and **Receipt prefix** (e.g. `DSR27`) → **Save**.
+
+## 🛠️ When the app says "Database update needed"
+
+Some new features need a one-time change in Supabase. **Your data stays as it is.**
+
+1. In the app tap **📋 Copy SQL**. (Or on GitHub open `supabase/setup.sql` → **Copy raw file**.)
+2. Supabase → **SQL Editor** → **New query** → paste → **Run** (it should say *Success*).
+3. Back in the app tap **🔄 Check again**. The notice disappears.
+
+---
+
 ## 🆘 Good to know
 
 - **Website shows "App setup needed"** → `config.js` is still empty, or the update is still running.

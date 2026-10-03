@@ -35,7 +35,8 @@ const deployHelpers = {
 export default defineConfig({
   base,
   plugins: [react(), deployHelpers],
-  server: { host: '0.0.0.0', port: 5173, allowedHosts: true, proxy: devProxy },
+  // fs.allow '..': the admin's "Copy SQL" button bundles ../supabase/setup.sql (loaded on demand)
+  server: { host: '0.0.0.0', port: 5173, allowedHosts: true, proxy: devProxy, fs: { allow: ['..'] } },
   preview: { host: '0.0.0.0', port: 5173, allowedHosts: true, proxy: devProxy },
   build: { chunkSizeWarningLimit: 1500, sourcemap: false },
 });

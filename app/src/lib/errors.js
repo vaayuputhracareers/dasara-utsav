@@ -1,6 +1,6 @@
 const KNOWN = ['not_allowed', 'invalid_mobile', 'invalid_amount', 'donor_name_required', 'mobile_exists', 'last_admin',
   'cannot_change_own_role', 'reason_required', 'password_too_short', 'cannot_handover_self', 'not_found', 'signup_closed',
-  'invalid_mode', 'member_not_found', 'invalid_role'];
+  'invalid_mode', 'member_not_found', 'invalid_role', 'db_update_needed'];
 
 export function errMsg(e, t) {
   const m = String((e && (e.message || e.error_description || e.msg)) || e || '');

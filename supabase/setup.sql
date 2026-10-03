@@ -886,7 +886,96 @@ begin
   return v;
 end $$;
 
+-- Version of this script. The app compares it with the version it needs and tells the admin
+-- "database update needed" (= run this file again) when it is older.
+create or replace function public.get_db_version() returns int
+language sql immutable set search_path = '' as $$ select 2 $$;
+
+-- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
+-- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
+-- receipt numbers at 0001. Keeps: settings, logo, member logins (unless p_remove_members = true).
+-- Bill photo files are removed by the app (Storage API) using the returned 'bill_paths'.
+create or replace function public.admin_delete_all_data(p_password text, p_confirm text, p_remove_members boolean default false)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid uuid := auth.uid();
+  v_hash text;
+  v_fails int;
+  v_counts jsonb;
+  v_bills jsonb;
+  v_removed int := 0;
+  v_blocked int := 0;
+begin
+  if not public.is_admin() then raise exception 'not_allowed'; end if;
+  if coalesce(btrim(p_confirm), '') <> 'DELETE' then
+    return jsonb_build_object('ok', false, 'error', 'confirm_word');
+  end if;
+  select count(*) into v_fails from public.audit_log
+   where actor = v_uid and action = 'delete_all_wrong_password' and at > now() - interval '15 minutes';
+  if v_fails >= 5 then
+    return jsonb_build_object('ok', false, 'error', 'too_many_attempts');
+  end if;
+  select encrypted_password into v_hash from auth.users where id = v_uid;
+  if coalesce(v_hash, '') = '' or extensions.crypt(coalesce(p_password, ''), v_hash) is distinct from v_hash then
+    perform public.write_audit('delete_all_wrong_password', 'all', null, null);   -- kept: no exception raised
+    return jsonb_build_object('ok', false, 'error', 'wrong_password', 'attempts_left', greatest(0, 4 - v_fails));
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('utsav_delete_all_data'));
+  select coalesce(jsonb_agg(bill_path), '[]'::jsonb) into v_bills
+    from public.expenses where coalesce(bill_path, '') <> '';
+  v_counts := jsonb_build_object(
+    'donations',       (select count(*) from public.donations),
+    'donations_total', coalesce((select sum(amount) from public.donations where status = 'active'), 0),
+    'expenses',        (select count(*) from public.expenses),
+    'expenses_total',  coalesce((select sum(amount) from public.expenses where status = 'approved'), 0),
+    'handovers',       (select count(*) from public.handovers),
+    'programs',        (select count(*) from public.programs),
+    'festival_days',   (select count(*) from public.festival_days),
+    'history',         (select count(*) from public.audit_log));
+
+  delete from public.donations where true;      -- "where true": allowed even where DELETE-without-WHERE is blocked
+  delete from public.expenses where true;
+  delete from public.handovers where true;
+  delete from public.programs where true;
+  delete from public.festival_days where true;
+  delete from public.audit_log where true;
+  update public.receipt_counter set last_no = 0 where id = 1;
+
+  if coalesce(p_remove_members, false) then
+    delete from public.member_invites where true;
+    begin
+      with gone as (
+        delete from auth.users u where u.id in (select p.id from public.profiles p where p.role <> 'admin')
+        returning 1)
+      select count(*) into v_removed from gone;
+      delete from public.profiles where role <> 'admin';   -- profiles without a login
+    exception when insufficient_privilege or foreign_key_violation then   -- not allowed here → block them instead
+      update public.profiles set status = 'blocked' where role <> 'admin' and status <> 'blocked';
+      get diagnostics v_blocked = row_count;
+    end;
+  end if;
+
+  v_counts := v_counts || jsonb_build_object('members_removed', v_removed, 'members_blocked', v_blocked);
+  perform public.write_audit('data_deleted', 'all', null, v_counts);
+  return v_counts || jsonb_build_object('ok', true, 'bill_paths', v_bills);
+end $$;
+
+-- Settings → Export data writes a line in the history, so "Delete data" can warn when a year
+-- was never exported (or changed after its last export).
+create or replace function public.log_data_export(p_year int, p_details jsonb default null)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.is_admin() then raise exception 'not_allowed'; end if;
+  perform public.write_audit('data_exported', 'export', coalesce(p_year::text, 'all'), p_details);
+end $$;
+
 -- function permissions
+revoke execute on function public.log_data_export(int, jsonb) from public, anon;
+grant execute on function public.log_data_export(int, jsonb) to authenticated;
+revoke execute on function public.admin_delete_all_data(text, text, boolean) from public, anon;
+grant execute on function public.admin_delete_all_data(text, text, boolean) to authenticated;
+grant execute on function public.get_db_version() to anon, authenticated;
 revoke execute on function public.member_balances_internal() from public, anon, authenticated;
 revoke execute on function public.write_audit(text, text, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
@@ -919,6 +1008,9 @@ create policy "utsav bills upload" on storage.objects for insert to authenticate
 drop policy if exists "utsav bills read" on storage.objects;
 create policy "utsav bills read" on storage.objects for select to authenticated
   using (bucket_id = 'bills' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin()));
+drop policy if exists "utsav bills delete" on storage.objects;
+create policy "utsav bills delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'bills' and public.is_admin());
 drop policy if exists "utsav assets upload" on storage.objects;
 create policy "utsav assets upload" on storage.objects for insert to authenticated
   with check (bucket_id = 'assets' and public.is_admin());

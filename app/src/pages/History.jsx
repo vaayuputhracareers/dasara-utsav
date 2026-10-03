@@ -21,6 +21,12 @@ function describe(a, t, people, lang) {
     if (d.category) parts.push(d.category);
     const am = pair(d.amount, inr); if (am) parts.push(am); else if (Array.isArray(d.amount)) parts.push(inr(d.amount[1]));
     if (d.note) parts.push(d.note);
+  } else if (a.entity === 'all' && a.action === 'data_deleted') {
+    parts.push(t('audit_deleted_x', { d: d.donations ?? 0, e: d.expenses ?? 0, h: d.handovers ?? 0 }));
+    if (d.members_removed) parts.push(`${t('del_members')}: ${d.members_removed}`);
+  } else if (a.entity === 'export') {
+    parts.push(a.entity_id === 'all' ? t('all_years') : a.entity_id);
+    if (d.file) parts.push(d.file);
   } else if (a.entity === 'profile') {
     parts.push(d.name || personName(people[a.entity_id], lang) || '');
     const r = pair(d.role); if (r) parts.push(r);

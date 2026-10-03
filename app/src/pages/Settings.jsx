@@ -7,6 +7,7 @@ import { errMsg } from '../lib/errors.js';
 import { compressImage } from '../lib/image.js';
 import { DEFAULT_TEMPLATE, TEMPLATE_TAGS, appBaseUrl, buildReceiptMessage } from '../lib/receipt.js';
 import { Page, Field, Switch, useToast } from '../components/ui.jsx';
+import { ExportCard, DeleteCard, useDbVersion } from '../components/DataTools.jsx';
 
 const FIELDS = ['temple_name_te', 'temple_name_en', 'committee_name_te', 'committee_name_en', 'village_te', 'village_en',
   'address_te', 'address_en', 'contact_phone', 'logo_url', 'event_title_te', 'event_title_en', 'event_year', 'start_date',
@@ -62,6 +63,8 @@ export default function SettingsPage() {
   const [f, setF] = useState(init);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [dbVersion, checkDb] = useDbVersion();
+  const [dataKey, setDataKey] = useState(0);
   const tplRef = useRef(null);
   const logoRef = useRef(null);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -188,6 +191,11 @@ export default function SettingsPage() {
         {dirty && <div className="alert warn" style={{ marginBottom: 6 }}>✏️ {t('unsaved')}</div>}
         <button className="btn primary block" style={{ padding: 15 }} disabled={busy || !dirty} onClick={submit}>{busy ? t('saving') : t('save_settings')}</button>
       </div>
+
+      {/* Admin-only data tools (this whole page is admin-only; the server checks again) */}
+      <div id="data" className="sec-head">{t('data_sec_title')}</div>
+      <ExportCard key={`export-${dataKey}`} />
+      <DeleteCard dbVersion={dbVersion} onCheckDb={checkDb} onDeleted={() => setDataKey((k) => k + 1)} />
     </Page>
   );
 }

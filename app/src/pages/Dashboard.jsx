@@ -8,6 +8,7 @@ import { inr, inrSigned, fmtShortDay, fmtDateTime, todayIST, personName } from '
 import { exportSheets } from '../lib/exportXlsx.js';
 import { Page, Spinner, Empty, useToast } from '../components/ui.jsx';
 import { DONATION_SELECT, donationRows } from './Donations.jsx';
+import { DbUpdateNotice, useDbVersion } from '../components/DataTools.jsx';
 import { EXPENSE_SELECT, expenseRows } from './Expenses.jsx';
 
 const COLORS = ['#7a1d1d', '#ef7d1a', '#f6c344', '#c62828', '#16804a', '#9a3412', '#6d28d9', '#0e7490', '#a16207', '#be185d'];
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const { t, lang, P, L } = useLang();
   const { settings } = useSettings();
   const toast = useToast();
+  const [dbVersion, checkDb] = useDbVersion();
   const { data: d, loading, error, reload } = useAsync(async () => {
     const { data, error: e } = await supabase.rpc('get_dashboard');
     if (e) throw e;
@@ -64,6 +66,7 @@ export default function Dashboard() {
   return (
     <Page title={`📊 ${t('nav_dashboard')}`} sub={`${L(settings, 'temple_name') || t('app_name')} · ${fmtShortDay(todayIST(), lang)}`} wide
       right={<LangSwitch />}>
+      <DbUpdateNotice version={dbVersion} onCheck={checkDb} />
       {!settings.temple_name_te && !settings.temple_name_en && (
         <div className="alert info" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
           <span>🙏 {t('welcome_admin')}</span>

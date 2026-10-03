@@ -61,6 +61,8 @@ schedule and a public QR page**. It works in Telugu and English, on phones and l
 - **Programs**: day-wise schedule with alankaram, timings and place.
 - **Public QR page**: the Admin switches each section on or off. It has a printable QR poster and never shows mobile numbers.
 - **Audit trail** of cancellations, edits, approvals, handovers and password resets.
+- **Data tools (admin only, Settings → Data)**: a full Excel backup of any year (summary, donations, expenses, cash handovers, members, day-wise, programs, alankaram) plus a ZIP of the bill photos, so the app can be reused every year. **Delete data** has two confirmations: step 1 is a checklist with backup status and cash warnings, step 2 needs the word DELETE plus the admin password, checked on the server (5 tries, then 15 minutes locked).
+- **Database update notice**: when a new app version needs a database change, the admin sees *"Database update needed"* with a **Copy SQL** button. `setup.sql` is always safe to run again.
 - Installable on phones (Add to Home screen) with a sidebar layout on laptops. Everything is editable in the app.
 
 ## Tech
@@ -75,5 +77,7 @@ receipt links (`/r/…`) and QR links (`/p/…`) open directly.
 ## Testing done
 
 - 57 automated database/API checks against the real Supabase Auth server + PostgREST (security rules, receipt numbering, handover maths, public page privacy, password reset, sign-up rules).
+- 32 checks for **Delete data**: only the admin may call it, the DELETE word, wrong passwords and the 15-minute lock, what is deleted and what is kept, receipts restarting at 0001, optional removal of member logins. The upgrade from the previous `setup.sql` keeps every row identical.
+- 49 phone-size browser checks for **Settings → Data**: year choice and counts; the Excel contents compared with the database (sheets, totals, dates, money format); the ZIP matching the Excel "Bill File" column; both delete steps; leftover photos removed; the member blocked; the "Database update needed" notice and Copy SQL.
 - End-to-end phone-size browser tests of every screen (admin, member, public visitor), Excel exports, QR poster and bill photo upload.
 - GitHub Pages simulation (`/dasara-utsav/` sub-folder, 404 fallback): login, every page opened directly and refreshed, receipt and QR links, install/offline, logout. 18/18 checks passed.
