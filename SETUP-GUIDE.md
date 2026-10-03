@@ -134,7 +134,9 @@ Never send the secret key or database password.)*
      WhatsApp groups.
    - **🖼️ QR poster → ✏️ Edit poster**: switch off the lines you don't want and change the words (the picture
      changes at once) → **Save** → **⬇️ Download poster** → print it and keep it at the temple.
-6. On every phone: open the link in **Chrome → ⋮ → Add to Home screen** so it opens like an app (the icon is called **Dasara**).
+6. **☰ More → 👥 Members** → *📊 Members can see the financial position*: switch it ON if team members may see the total
+   donations, total expenses and balance on their home screen (OFF by default; you can change it any time).
+7. On every phone: open the link in **Chrome → ⋮ → Add to Home screen** so it opens like an app (the icon is called **Dasara**).
 
 The app opens in **English**. Tap **తెలుగు** at the top to switch; each phone remembers its choice. WhatsApp receipts
 stay in Telugu.
@@ -178,8 +180,9 @@ add the TXT record that GitHub shows to Cloudflare DNS → **Verify**. This stop
 |---|---|
 | Member | **➕ Donate** → name, mobile, amount, cash/UPI, village, gotram, purpose → **Save** → **Send on WhatsApp** → press **Send** in WhatsApp |
 | Member (UPI) | Choose **UPI** → **Show temple UPI QR** → donor scans & pays → then Save |
-| Member (spent cash) | **🧾 Expense** → amount, category, photo of bill → admin approves → it is deducted from their cash automatically |
-| Admin, night | **🤝 Cash handover** → collect cash from each member → **Confirm received** (if less is given, the difference stays on their balance) |
+| Member (spent money) | **🧾 Expense** → amount, category, photo of bill → admin approves |
+| Admin, approving a member's expense | Choose how to settle it: **↔️ Set off against collections** (deducted from the cash that member hands over, now or later) or **💸 Pay back now** → **Cash** or **Temple UPI** (type the UPI transaction no. if you like) → **Approve**. Changed your mind? Open the expense → *Pay back* or *Undo pay back*. |
+| Admin, night | **🤝 Cash handover** → collect cash from each member → **Confirm received** (if less is given, the difference stays on their balance). When the committee owes a member, tap **🧾 Expenses** on their card → **💸 Pay back** (cash or temple UPI). |
 | Admin | **🏦 UPI to check** → compare with the bank app → mark each UPI receipt as received |
 | Admin | **📊 Dashboard → Full report** → Excel file with all donations, expenses, handovers |
 
@@ -266,6 +269,10 @@ Some new features need a one-time change in Supabase. **Your data stays as it is
   UPI app shows one, enter it as a donation (payment **UPI**) so the donor gets a receipt.
 - **No "Donate" section / "Edit poster" cannot save / no Telugu boxes** → the database update (version 6) is
   missing: see *"Database update needed"* above.
+- **No "Pay back" choice for member expenses / no financial position switch on the Members page** → the database
+  update (version 7) is missing: see *"Database update needed"* above.
+- **"Pay back" missing on a member's expense** → it was already used in a cash handover (set off), or it was paid
+  from committee funds. Only expenses a member paid that are not yet in a handover can be paid back.
 - **Wrong entry** → only the admin can cancel a receipt, and a reason is required. It stays in the records as *Cancelled*, and the donor's receipt link shows *Cancelled*.
 - **"Sign-up is closed"** → self sign-up is OFF in Settings → create the member from **Members**.
 - **Message about "Confirm email"** → repeat Part A, step 4.

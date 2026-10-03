@@ -1,4 +1,5 @@
 // Settings → Data: yearly Excel export, bill-photo ZIP and "delete all data" (admin only).
+import { settlementLabel } from './settle.js';
 import { supabase, fetchAll } from './supabase.js';
 import { exportSheets } from './exportXlsx.js';
 import { makeZip, saveBlob } from './zip.js';
@@ -175,6 +176,10 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     'Reviewed By': nameOf(e.reviewer),
     'Reviewed On': e.reviewed_at ? fmtDateTime(e.reviewed_at, 'en') : '',
     'Review Note': e.review_note || '',
+    Settlement: settlementLabel(e),   // version 7: set off / paid back (cash or temple UPI)
+    'Paid Back On': e.settled_at ? fmtDateTime(e.settled_at, 'en') : '',
+    'Paid Back By': e.settled_by ? nameOf(people[e.settled_by]) : '',
+    'Paid Back Ref': e.settled_ref || '',
     'Bill File': e.bill_path ? billFileName(e) : '',
   }));
 
@@ -194,15 +199,16 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     const mine = valid.filter((d) => d.collected_by === p.id);
     const mCash = sum(mine.filter((d) => d.payment_mode === 'cash'));
     const mUpi = sum(mine.filter((d) => d.payment_mode === 'upi'));
-    const mExp = sum(approved.filter((e) => e.paid_by === p.id));
+    const mExp = sum(approved.filter((e) => e.paid_by === p.id && !e.settled_mode));    // set off against collections
+    const mBack = sum(approved.filter((e) => e.paid_by === p.id && e.settled_mode));    // paid back by the admin (not deducted)
     const mGiven = sum(handovers.filter((h) => h.member_id === p.id), (h) => h.amount_received);
     return {
       Member: p.full_name || '', 'Name (Telugu)': p.name_te || '', Mobile: p.mobile || '',
       Role: p.role === 'admin' ? 'Admin' : 'Member', Receipts: mine.length,
       'Cash Collected': mCash, 'UPI Collected': mUpi, 'Total Collected': n2(mCash + mUpi),
-      'Expenses Paid From Cash': mExp, 'Cash Handed Over': mGiven, 'Cash Balance': n2(mCash - mExp - mGiven),
+      'Expenses Set Off': mExp, 'Expenses Paid Back': mBack, 'Cash Handed Over': mGiven, 'Cash Balance': n2(mCash - mExp - mGiven),
     };
-  }).filter((r) => r.Receipts || r['Expenses Paid From Cash'] || r['Cash Handed Over']);
+  }).filter((r) => r.Receipts || r['Expenses Set Off'] || r['Expenses Paid Back'] || r['Cash Handed Over']);
 
   const dayMap = new Map();
   const dayRow = (k) => {
@@ -261,6 +267,8 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     ['Expenses – rejected', rejected.length, sum(rejected)],
     ['NET POSITION (valid donations − approved expenses)', '', n2(sum(valid) - sum(approved))],
     ['Cash handed over to admin', handovers.length, sum(handovers, (h) => h.amount_received)],
+    ['Member expenses paid back – cash', approved.filter((e) => e.settled_mode === 'cash').length, sum(approved.filter((e) => e.settled_mode === 'cash'))],
+    ['Member expenses paid back – temple UPI', approved.filter((e) => e.settled_mode === 'upi').length, sum(approved.filter((e) => e.settled_mode === 'upi'))],
     ['Puja schedule – days reserved / entries', `${pujaRows.filter((r) => r.Status === 'Reserved').length} / ${pujaRows.length}`, ''],
     [],
     ['Approved expenses by category', 'Count', 'Amount (₹)'],
@@ -275,7 +283,7 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     { name: 'Donations', rows: donationRows, money: ['Amount'], filter: true },
     { name: 'Expenses', rows: expenseRows, money: ['Amount'], filter: true },
     { name: 'Cash handovers', rows: handoverRows, money: ['Due', 'Received', 'Difference'], filter: true },
-    { name: 'Members', rows: memberRows, money: ['Cash Collected', 'UPI Collected', 'Total Collected', 'Expenses Paid From Cash', 'Cash Handed Over', 'Cash Balance'], filter: true },
+    { name: 'Members', rows: memberRows, money: ['Cash Collected', 'UPI Collected', 'Total Collected', 'Expenses Set Off', 'Expenses Paid Back', 'Cash Handed Over', 'Cash Balance'], filter: true },
     { name: 'Day-wise', rows: dayRows, money: ['Cash', 'UPI', 'Total Donations', 'Expenses (approved)', 'Net For The Day'] },
     { name: 'Programs', rows: programRows, filter: true },
     { name: 'Alankaram', rows: dayInfoRows },

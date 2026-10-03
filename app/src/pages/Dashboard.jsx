@@ -46,6 +46,11 @@ export default function Dashboard() {
         { Item: 'Total expenses (approved)', Amount: Number(d.expenses_total) },
         { Item: 'Net position', Amount: Number(d.donations_total) - Number(d.expenses_total) },
         { Item: 'Cash still with members', Amount: Number(d.cash_with_members) },
+        ...(d.owed_to_members != null ? [
+          { Item: 'Committee owes members', Amount: Number(d.owed_to_members) },
+          { Item: 'Member expenses paid back – cash', Amount: Number(d.paid_back_cash) },
+          { Item: 'Member expenses paid back – temple UPI', Amount: Number(d.paid_back_upi) },
+        ] : []),
         { Item: 'Report time', Amount: fmtDateTime(new Date(), 'en') },
       ];
       await exportSheets(`dasara-report-${todayIST()}.xlsx`, [
@@ -82,7 +87,10 @@ export default function Dashboard() {
           <div className="grid2 grid-dash">
             <Link to="/donations" className="card stat link"><small>{t('total_donations')}</small><b>{inr(d.donations_total)}</b><em className="num">{t('cash_upi_split', { cash: inr(d.cash_total), upi: inr(d.upi_total) })}</em></Link>
             <Link to="/expenses" className="card stat bad link"><small>{t('total_expenses')}</small><b>{inr(d.expenses_total)}</b><em>{t('bills_n', { n: d.expenses_count })}</em></Link>
-            <Link to="/handover" className={`card stat link ${Number(d.cash_with_members) > 0 ? 'warn' : 'good'}`}><small>{t('cash_with_members')}</small><b>{inr(d.cash_with_members)}</b><em>{t('with_n_members', { n: d.members_with_cash })} →</em></Link>
+            <Link to="/handover" className={`card stat link ${Number(d.cash_with_members) > 0 ? 'warn' : 'good'}`}><small>{t('cash_with_members')}</small><b>{inr(d.cash_with_members)}</b><em>{t('with_n_members', { n: d.members_with_cash })} →</em>
+              {Number(d.owed_to_members) > 0 && <em className="num" data-testid="dash-owed">{t('owed_to_members', { amount: inr(d.owed_to_members) })}</em>}
+              {Number(d.paid_back_total) > 0 && <em className="num" data-testid="dash-paid-back">{t('paid_back_members', { amount: inr(d.paid_back_total), cash: inr(d.paid_back_cash), upi: inr(d.paid_back_upi) })}</em>}
+            </Link>
             <div className="card stat"><small>{t('today_collection')}</small><b>{inr(d.today_total)}</b><em>{t('receipts_n', { n: d.today_count })}</em></div>
           </div>
           {(d.pending_expenses > 0 || d.pending_members > 0) && (

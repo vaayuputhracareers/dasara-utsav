@@ -4,7 +4,7 @@ import { useLang } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { useAsync } from '../lib/useAsync.js';
-import { inr, fmtDateTime, personName } from '../lib/format.js';
+import { inr, inrSigned, fmtDateTime, personName } from '../lib/format.js';
 import { Page, Spinner, Empty } from '../components/ui.jsx';
 import { LangSwitch } from '../lib/i18n.jsx';
 
@@ -18,11 +18,20 @@ export default function MemberHome() {
     return data;
   }, []);
   const bal = Number(s?.balance || 0);
+  // Version 7: the committee's totals, when the admin allows it (Members page switch)
+  const showFin = !!settings.members_see_finance;
+  const { data: fin, reload: reloadFin } = useAsync(async () => {
+    if (!showFin) return null;
+    const { data, error } = await supabase.rpc('get_finance_summary');
+    if (error) throw error;
+    return data;
+  }, [showFin]);
+  const finNet = fin ? Number(fin.donations_total) - Number(fin.expenses_total) : 0;
   return (
     <Page title={L(settings, 'temple_name') || t('app_name')} sub={`${L(settings, 'event_title')} ${settings.event_year}`} right={<LangSwitch />}>
       <div className="row between">
         <h2 style={{ fontSize: 17, color: 'var(--maroon)' }}>{t('hello', { name: personName(profile, lang) })}</h2>
-        <button className="btn ghost xs" onClick={() => reload()}>{t('refresh')}</button>
+        <button className="btn ghost xs" onClick={() => { reload(); if (showFin) reloadFin(); }}>{t('refresh')}</button>
       </div>
       {loading && !s ? <Spinner /> : s && (
         <>
@@ -35,7 +44,19 @@ export default function MemberHome() {
             <b>{inr(Math.abs(bal))}</b>
             <em>{bal > 0 ? t('cash_with_me_hint') : bal === 0 ? t('all_handed_over') : ''}</em>
             <em style={{ marginTop: 4 }} className="num">{t('balance_breakdown', { cash: inr(s.cash_total), exp: inr(s.expenses_approved), ho: inr(s.handed_over) })}</em>
+            {Number(s.paid_back) > 0 && <em style={{ marginTop: 4 }} className="num" data-testid="paid-back-you">{t('paid_back_you', { amount: inr(s.paid_back) })}</em>}
           </div>
+          {showFin && fin && (
+            <div className="card fin-card" data-testid="finance-card">
+              <div className="card-title">{t('finance_title')}</div>
+              <div className="mini">
+                <div><small>{t('total_donations')}</small><b data-testid="fin-donations">{inr(fin.donations_total)}</b></div>
+                <div><small>{t('total_expenses')}</small><b style={{ color: 'var(--kumkum)' }} data-testid="fin-expenses">{inr(fin.expenses_total)}</b></div>
+                <div><small>{t('finance_balance')}</small><b style={{ color: finNet >= 0 ? 'var(--green)' : 'var(--kumkum)' }} data-testid="fin-net">{inrSigned(finNet)}</b></div>
+              </div>
+              <p className="hint" style={{ marginTop: 6 }}>{t('finance_hint')}</p>
+            </div>
+          )}
           {s.pending_expenses > 0 && <Link to="/expenses" className="alert warn">⏳ {t('pending_expenses_n', { n: s.pending_expenses })}</Link>}
         </>
       )}

@@ -340,3 +340,9 @@ ul.plain{margin:6px 0 0 18px;padding:0}
 .poster-item:last-child{border-bottom:0}
 .poster-item .toggle-row{border-bottom:0}
 .poster-item .input{margin-top:2px}
+
+/* ---- version 7: settling member expenses + members' financial position ---- */
+.settle-box{background:#f3f8f4;border:1px solid #d5e9dc;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.settle-box .hint{margin:0}
+.fin-card .mini b{font-size:15px}
+.stat em + em{display:block;margin-top:2px}

@@ -8,7 +8,40 @@ import { useAsync } from '../lib/useAsync.js';
 import { errMsg } from '../lib/errors.js';
 import { inr, personName, fmtDate } from '../lib/format.js';
 import { appBaseUrl, waLink } from '../lib/receipt.js';
-import { Page, Spinner, Empty, Modal, Field, Seg, Badge, useToast, copyText, MobileInput } from '../components/ui.jsx';
+import { Page, Spinner, Empty, Modal, Field, Seg, Badge, useToast, copyText, MobileInput, Switch } from '../components/ui.jsx';
+import { DbUpdateNotice, useDbVersion } from '../components/DbUpdate.jsx';
+
+/** Version 7 switch: team members see the committee's financial position (total donations + total expenses). */
+function FinanceNeedsUpdate() {
+  const { t } = useLang();
+  const [version, check] = useDbVersion();
+  return (
+    <div className="stack" data-testid="finance-db-update">
+      <div className="alert warn">{t('finance_needs_db')}</div>
+      <DbUpdateNotice version={version} onCheck={async () => { await check(); window.location.reload(); }} />
+    </div>
+  );
+}
+
+function FinanceSwitch() {
+  const { t } = useLang();
+  const { settings, save } = useSettings();
+  const toast = useToast();
+  if (!('members_see_finance' in settings)) return <FinanceNeedsUpdate />;
+  const on = !!settings.members_see_finance;
+  const toggle = async (v) => {
+    try { await save({ members_see_finance: v }); toast(v ? t('finance_on_done') : t('finance_off_done'), 'success', 4000); }
+    catch (e) { toast(errMsg(e, t), 'error'); }
+  };
+  return (
+    <div className="card" style={{ padding: '2px 14px' }} data-testid="finance-toggle">
+      <div className="toggle-row">
+        <span>{t('finance_toggle')}<small className="hint" style={{ display: 'block', fontWeight: 500 }}>{t('finance_toggle_hint')}</small></span>
+        <Switch checked={on} onChange={toggle} />
+      </div>
+    </div>
+  );
+}
 
 const digits6 = (v) => String(v || '').replace(/\D/g, '').slice(0, 6);
 
@@ -113,6 +146,7 @@ export default function Members() {
   return (
     <Page title={`👥 ${t('nav_members')}`} back="/more" wide right={<button className="tb-btn" onClick={openAdd}>➕</button>}>
       <button className="btn primary block" onClick={openAdd}>{t('add_member')}</button>
+      <FinanceSwitch />
       {loading && !data ? <Spinner /> : (
         <>
           {pending.length > 0 && (

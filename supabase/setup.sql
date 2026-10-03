@@ -123,6 +123,8 @@ alter table public.app_settings add column if not exists show_pujas boolean not 
 alter table public.app_settings add column if not exists show_donate boolean not null default true;
 alter table public.app_settings add column if not exists qr_poster jsonb not null default '{}'::jsonb
   check (jsonb_typeof(qr_poster) = 'object');
+-- Added in version 7 – team members may see the committee's financial position (Members page switch).
+alter table public.app_settings add column if not exists members_see_finance boolean not null default false;
 insert into public.app_settings (id) values (1) on conflict (id) do nothing;
 
 create table if not exists public.handovers (
@@ -191,6 +193,21 @@ create table if not exists public.expenses (
   handover_id   uuid references public.handovers(id),
   updated_at    timestamptz not null default now()
 );
+
+-- Added in version 7 – a member's expense is settled in one of 2 ways:
+--   set off against the cash the member collects (settled_mode empty – as before), or
+--   paid back by the admin in cash or through the temple UPI (settled_mode 'cash' / 'upi').
+-- Changed only through settle_expense() (checked + written to the change history).
+alter table public.expenses add column if not exists settled_mode text check (settled_mode in ('cash','upi'));
+alter table public.expenses add column if not exists settled_at   timestamptz;
+alter table public.expenses add column if not exists settled_by   uuid references public.profiles(id);
+alter table public.expenses add column if not exists settled_ref  text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'expenses_settled_member_chk') then
+    alter table public.expenses add constraint expenses_settled_member_chk
+      check (settled_mode is null or (paid_by is not null and status = 'approved'));
+  end if;
+end $$;
 
 create table if not exists public.festival_days (
   day_date      date primary key,
@@ -307,8 +324,8 @@ language sql stable security definer set search_path = '' as $$
   from public.profiles p
   left join (select collected_by as id, sum(amount) s, count(*) n from public.donations
              where status = 'active' and payment_mode = 'cash' group by 1) c on c.id = p.id
-  left join (select paid_by as id, sum(amount) s from public.expenses
-             where status = 'approved' and paid_by is not null group by 1) x on x.id = p.id
+  left join (select paid_by as id, sum(amount) s from public.expenses   -- set off only (paid-back expenses are not deducted)
+             where status = 'approved' and paid_by is not null and settled_mode is null group by 1) x on x.id = p.id
   left join (select member_id as id, sum(amount_received) s, max(received_at) last_at
              from public.handovers group by 1) h on h.id = p.id
   left join (select collected_by as id, count(*) n, sum(amount) s from public.donations
@@ -516,6 +533,7 @@ begin
   new.created_at  := now();
   new.updated_at  := now();
   new.handover_id := null;
+  new.settled_mode := null; new.settled_at := null; new.settled_by := null; new.settled_ref := null;   -- pay back: settle_expense()
   if public.is_admin() then
     new.status      := 'approved';
     new.reviewed_by := auth.uid();
@@ -538,6 +556,16 @@ begin
   new.created_by := old.created_by;
   new.created_at := old.created_at;
   new.updated_at := now();
+  -- version 7: the settlement changes only through settle_expense(); a paid-back expense keeps its amount and member
+  if (new.settled_mode is distinct from old.settled_mode or new.settled_at is distinct from old.settled_at
+      or new.settled_by is distinct from old.settled_by or new.settled_ref is distinct from old.settled_ref)
+     and coalesce(current_setting('app.settle_expense', true), '') <> 'on' then
+    raise exception 'use_settle_expense';
+  end if;
+  if old.settled_mode is not null and new.settled_mode is not null
+     and (new.amount is distinct from old.amount or new.paid_by is distinct from old.paid_by) then
+    raise exception 'paid_back_locked';
+  end if;
   if new.status is distinct from old.status or new.amount is distinct from old.amount then
     perform public.write_audit('expense_' || new.status, 'expense', old.id::text,
       jsonb_build_object('amount', jsonb_build_array(old.amount, new.amount),
@@ -796,6 +824,10 @@ begin
     'today_count',     (select count(*) from d where (collected_at at time zone 'Asia/Kolkata')::date = v_today),
     'cash_with_members', coalesce((select sum(balance) from b where role <> 'admin' and balance > 0), 0),
     'members_with_cash', (select count(*) from b where role <> 'admin' and balance > 0),
+    'owed_to_members',   coalesce((select -sum(balance) from b where role <> 'admin' and balance < 0), 0),
+    'paid_back_total',   coalesce((select sum(amount) from e where settled_mode is not null), 0),
+    'paid_back_cash',    coalesce((select sum(amount) from e where settled_mode = 'cash'), 0),
+    'paid_back_upi',     coalesce((select sum(amount) from e where settled_mode = 'upi'), 0),
     'pending_expenses',  (select count(*) from public.expenses where status = 'pending'),
     'pending_members',   (select count(*) from public.profiles where status = 'pending'),
     'upi_unverified_count', (select count(*) from d where payment_mode = 'upi' and not upi_verified),
@@ -838,6 +870,8 @@ begin
     'balance', coalesce((select balance from public.member_balances_internal() where member_id = v_uid), 0),
     'unsettled_count', coalesce((select unsettled_count from public.member_balances_internal() where member_id = v_uid), 0),
     'pending_expenses', (select count(*) from public.expenses where created_by = v_uid and status = 'pending'),
+    'paid_back', coalesce((select sum(amount) from public.expenses where paid_by = v_uid and status = 'approved' and settled_mode is not null), 0),
+    'paid_back_count', (select count(*) from public.expenses where paid_by = v_uid and status = 'approved' and settled_mode is not null),
     'handovers', coalesce((select jsonb_agg(x order by x.received_at desc) from (
         select h.id, h.expected_amount, h.amount_received, h.note, h.received_at,
                coalesce(nullif(rp.name_te, ''), rp.full_name) as receiver_te, rp.full_name as receiver_en
@@ -852,8 +886,14 @@ create or replace function public.get_member_balances() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 begin
   if not public.is_admin() then raise exception 'not_allowed'; end if;
-  return coalesce((select jsonb_agg(to_jsonb(b) order by b.balance desc)
+  return coalesce((select jsonb_agg(to_jsonb(b) || jsonb_build_object('paid_back', coalesce(pb.s, 0), 'setoff_open', coalesce(so.n, 0))
+                                     order by b.balance desc)
                    from public.member_balances_internal() b
+                   left join (select paid_by, sum(amount) s from public.expenses
+                              where status = 'approved' and settled_mode is not null group by 1) pb on pb.paid_by = b.member_id
+                   left join (select paid_by, count(*) n from public.expenses   -- set off, not yet in a handover → can be paid back
+                              where status = 'approved' and paid_by is not null and settled_mode is null and handover_id is null
+                              group by 1) so on so.paid_by = b.member_id
                    where b.role <> 'admin' or b.balance <> 0), '[]'::jsonb);
 end $$;
 
@@ -874,7 +914,7 @@ begin
   update public.donations set handover_id = v_id
    where collected_by = p_member and status = 'active' and payment_mode = 'cash' and handover_id is null;
   update public.expenses set handover_id = v_id
-   where paid_by = p_member and status = 'approved' and handover_id is null;
+   where paid_by = p_member and status = 'approved' and handover_id is null and settled_mode is null;
   perform public.write_audit('handover_confirmed', 'handover', v_id::text,
     jsonb_build_object('member', p_member, 'expected', v_expected, 'received', p_amount));
   return jsonb_build_object('id', v_id, 'expected', v_expected, 'received', p_amount,
@@ -923,6 +963,54 @@ begin
   if not found then raise exception 'not_found'; end if;
 end $$;
 
+-- Version 7 – settle a member's expense: p_mode 'cash' / 'upi' = the admin paid the member back (not deducted
+-- from the member's collections any more); p_mode null = undo → set off against collections again.
+create or replace function public.settle_expense(p_id uuid, p_mode text, p_ref text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare e public.expenses%rowtype;
+begin
+  if not public.is_admin() then raise exception 'not_allowed'; end if;
+  if p_mode is not null and p_mode not in ('cash', 'upi') then raise exception 'invalid_mode'; end if;
+  select * into e from public.expenses where id = p_id for update;
+  if not found then raise exception 'not_found'; end if;
+  if e.paid_by is null then raise exception 'not_member_expense'; end if;
+  if e.status <> 'approved' then raise exception 'not_approved'; end if;
+  perform set_config('app.settle_expense', 'on', true);
+  if p_mode is not null then
+    if e.settled_mode is not null then raise exception 'already_paid_back'; end if;
+    if e.handover_id is not null then raise exception 'already_set_off'; end if;   -- already used in a cash handover
+    update public.expenses
+       set settled_mode = p_mode, settled_at = now(), settled_by = auth.uid(),
+           settled_ref = nullif(btrim(coalesce(p_ref, '')), '')
+     where id = p_id;
+    perform public.write_audit('expense_paid_back', 'expense', p_id::text,
+      jsonb_build_object('amount', e.amount, 'member', e.paid_by, 'mode', p_mode, 'category', e.category_en,
+                         'note', nullif(btrim(coalesce(p_ref, '')), '')));
+  else
+    if e.settled_mode is null then raise exception 'not_paid_back'; end if;
+    update public.expenses set settled_mode = null, settled_at = null, settled_by = null, settled_ref = null where id = p_id;
+    perform public.write_audit('expense_payback_undone', 'expense', p_id::text,
+      jsonb_build_object('amount', e.amount, 'member', e.paid_by, 'mode', e.settled_mode, 'category', e.category_en));
+  end if;
+  perform set_config('app.settle_expense', '', true);
+  return (select to_jsonb(x) from public.expenses x where x.id = p_id);
+end $$;
+
+-- Version 7 – the committee's financial position for team members (only when the admin switched it on).
+create or replace function public.get_finance_summary() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not public.is_active_user() then raise exception 'not_allowed'; end if;
+  if not public.is_admin() and not coalesce((select members_see_finance from public.app_settings where id = 1), false) then
+    raise exception 'not_allowed';
+  end if;
+  return jsonb_build_object(
+    'donations_total', coalesce((select sum(amount) from public.donations where status = 'active'), 0),
+    'donations_count', (select count(*) from public.donations where status = 'active'),
+    'expenses_total',  coalesce((select sum(amount) from public.expenses where status = 'approved'), 0),
+    'expenses_count',  (select count(*) from public.expenses where status = 'approved'));
+end $$;
+
 create or replace function public.create_member_invite(p_mobile text, p_full_name text, p_name_te text, p_role text)
 returns text language plpgsql security definer set search_path = '' as $$
 declare v_mobile text := public.normalize_mobile(p_mobile);
@@ -968,8 +1056,9 @@ end $$;
 -- "database update needed" (= run this file again) when it is older.
 --   2 = data tools (export / delete)   3 = 6-digit PIN reset + logo upload permission   4 = splash screen
 --   5 = puja schedule   6 = "Donate" (UPI) on the public page, QR poster editor, Telugu names in the schedules
+--   7 = member expenses paid back by the admin (cash / temple UPI), members may see the financial position
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 6 $$;
+language sql immutable set search_path = '' as $$ select 7 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1077,6 +1166,8 @@ grant execute on function public.get_dashboard(), public.get_my_summary(), publi
   public.set_upi_verified(uuid, boolean), public.mark_receipt_shared(uuid),
   public.review_expense(uuid, boolean, text), public.create_member_invite(text, text, text, text),
   public.admin_reset_password(uuid, text), public.regenerate_public_slug() to authenticated;
+revoke execute on function public.settle_expense(uuid, text, text), public.get_finance_summary() from public, anon;
+grant execute on function public.settle_expense(uuid, text, text), public.get_finance_summary() to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 6. FILE STORAGE (bill photos = private, logo = public)

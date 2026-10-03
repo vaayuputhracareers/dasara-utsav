@@ -10,6 +10,8 @@ import { compressImage } from '../lib/image.js';
 import { exportSheets } from '../lib/exportXlsx.js';
 import { inr, fmtDay, fmtDateTime, todayIST, personName } from '../lib/format.js';
 import { Page, Spinner, Empty, Modal, Field, Seg, Badge, useToast } from '../components/ui.jsx';
+import { SettleBadge, settleStatus, PayBackModal, useMemberBalance, balText, modeLabel } from '../components/Settle.jsx';
+import { settlementLabel } from '../lib/settle.js';
 
 export const EXPENSE_SELECT = '*, creator:profiles!expenses_created_by_fkey(id,full_name,name_te), payer:profiles!expenses_paid_by_fkey(id,full_name,name_te)';
 
@@ -25,6 +27,9 @@ export function expenseRows(list) {
     'Paid From': e.payer ? `Cash with ${e.payer.full_name}` : 'Committee funds',
     'Recorded By': e.creator ? e.creator.full_name : '',
     Status: e.status,
+    Settlement: settlementLabel(e),
+    'Paid Back On': e.settled_at ? fmtDateTime(e.settled_at, 'en') : '',
+    'Paid Back Ref': e.settled_ref || '',
     'Review Note': e.review_note || '',
     'Bill Photo': e.bill_path ? 'Yes' : 'No',
   }));
@@ -149,11 +154,19 @@ export function ExpenseForm({ open, onClose, onSaved, edit }) {
 
 function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
   const { t, lang, P } = useLang();
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
+  const { settings } = useSettings();
   const toast = useToast();
   const [billUrl, setBillUrl] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const v7 = 'members_see_finance' in settings;   // database version 7: pay back member expenses
+  const memberExp = v7 && !!e?.paid_by;
+  const [settle, setSettle] = useState('setoff');   // pending: 'setoff' | 'cash' | 'upi'
+  const [ref, setRef] = useState('');
+  const [payOpen, setPayOpen] = useState(false);
+  const bal = useMemberBalance(e?.paid_by, isAdmin && memberExp && !e?.settled_mode);
+  const payer = e ? personName(e.payer, lang) : '';
   useEffect(() => {
     setBillUrl('');
     if (e?.bill_path) supabase.storage.from('bills').createSignedUrl(e.bill_path, 3600).then(({ data }) => setBillUrl(data?.signedUrl || ''));
@@ -162,12 +175,30 @@ function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
   const review = async (approve) => {
     setBusy(true);
     const { error } = await supabase.rpc('review_expense', { p_id: e.id, p_approve: approve, p_note: note });
+    if (error) { setBusy(false); return toast(errMsg(error, t), 'error'); }
+    if (approve && memberExp && settle !== 'setoff') {   // approve + pay back in one go
+      const r2 = await supabase.rpc('settle_expense', { p_id: e.id, p_mode: settle, p_ref: ref });
+      setBusy(false);
+      if (r2.error) { toast(`${t('approved')} ✅ · ${errMsg(r2.error, t)}`, 'error', 7000); onChanged?.(); onClose(); return; }
+      toast(t('approved_paid_back', { name: payer, mode: modeLabel(settle, t) }), 'success', 5000);
+      onChanged?.(); onClose(); return;
+    }
     setBusy(false);
-    if (error) return toast(errMsg(error, t), 'error');
     toast(approve ? t('approved') + ' ✅' : t('rejected'), 'success');
     onChanged?.(); onClose();
   };
+  const undo = async () => {
+    if (!window.confirm(t('payback_undo_confirm', { name: payer, amount: inr(e.amount) }))) return;
+    setBusy(true);
+    const { error } = await supabase.rpc('settle_expense', { p_id: e.id, p_mode: null, p_ref: null });
+    setBusy(false);
+    if (error) return toast(errMsg(error, t), 'error', 6000);
+    toast(t('payback_undone'), 'success');
+    onChanged?.(); onClose();
+  };
+  const mine = !isAdmin || e.paid_by === profile.id;
   return (
+    <>
     <Modal open={!!e} onClose={onClose} title={`🧾 ${P({ te: e.category_te, en: e.category_en }) || t('nav_expense')}`}>
       <div className="stack">
         <div className="row between">
@@ -182,10 +213,29 @@ function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
           <dt>{t('paid_from')}</dt><dd>{e.payer ? t('member_cash_of', { name: personName(e.payer, lang) }) : t('committee_funds')}</dd>
           <dt>{t('submitted_by')}</dt><dd>{personName(e.creator, lang)} · {fmtDateTime(e.created_at, lang)}</dd>
           {e.review_note && <><dt>{t('note')}</dt><dd>{e.review_note}</dd></>}
+          {memberExp && e.status === 'approved' && (
+            <><dt>{t('settlement')}</dt><dd data-testid="settle-status">{settleStatus(e, t, lang, mine)}{e.settled_ref ? <><br /><span className="hint">📝 {e.settled_ref}</span></> : null}</dd></>
+          )}
         </dl>
         {e.bill_path ? (billUrl ? <a href={billUrl} target="_blank" rel="noopener noreferrer"><img className="photo-prev" src={billUrl} alt="bill" /></a> : <Spinner sm />) : <div className="hint">{t('no_bill')}</div>}
         {isAdmin && e.status === 'pending' && (
           <div className="stack tight" style={{ borderTop: '1px dashed var(--line)', paddingTop: 10 }}>
+            {memberExp && (
+              <div className="settle-box" data-testid="settle-choice">
+                <div className="card-title" style={{ marginBottom: 6 }}>{t('settle_title', { name: payer })}</div>
+                <Seg value={settle === 'setoff' ? 'setoff' : 'payback'} onChange={(v) => setSettle(v === 'setoff' ? 'setoff' : 'cash')}
+                  options={[{ value: 'setoff', label: t('settle_setoff') }, { value: 'payback', label: t('settle_payback') }]} />
+                {settle === 'setoff' ? (
+                  <p className="hint" data-testid="settle-hint">{t('settle_setoff_hint', { name: payer })}{bal != null ? ` ${t('balance_effect', { name: payer, from: balText(bal, t), to: balText(bal - Number(e.amount), t) })}` : ''}</p>
+                ) : (
+                  <>
+                    <Seg value={settle} onChange={setSettle} options={[{ value: 'cash', label: `💵 ${t('cash')}` }, { value: 'upi', label: `📱 ${t('temple_upi')}` }]} />
+                    <input className="input" value={ref} placeholder={settle === 'upi' ? t('payback_ref_upi') : t('payback_ref_cash')} onChange={(ev) => setRef(ev.target.value)} data-testid="settle-ref" />
+                    <p className="hint" data-testid="settle-hint">{t('settle_payback_hint', { name: payer })}{bal != null ? ` ${t('balance_stays', { name: payer, bal: balText(bal, t) })}` : ''}</p>
+                  </>
+                )}
+              </div>
+            )}
             <Field label={t('review_note')}><input className="input" value={note} onChange={(ev) => setNote(ev.target.value)} /></Field>
             <div className="grid2">
               <button className="btn ghost danger-t" disabled={busy} onClick={() => review(false)}>{t('reject')}</button>
@@ -193,11 +243,19 @@ function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
             </div>
           </div>
         )}
-        {isAdmin && e.status !== 'rejected' && !e.handover_id && (
+        {isAdmin && memberExp && e.status === 'approved' && !e.settled_mode && !e.handover_id && (
+          <button className="btn ok block" disabled={busy} onClick={() => setPayOpen(true)} data-testid="payback-open">{t('payback_btn', { name: payer })}</button>
+        )}
+        {isAdmin && memberExp && e.settled_mode && (
+          <button className="btn ghost sm" disabled={busy} onClick={undo} data-testid="payback-undo">{t('payback_undo')}</button>
+        )}
+        {isAdmin && e.status !== 'rejected' && !e.handover_id && !e.settled_mode && (
           <button className="btn ghost sm" onClick={() => onEdit(e)}>✏️ {t('edit')}</button>
         )}
       </div>
     </Modal>
+    {payOpen && <PayBackModal expense={e} balance={bal} onClose={() => setPayOpen(false)} onDone={() => { onChanged?.(); onClose(); }} />}
+    </>
   );
 }
 
@@ -252,6 +310,7 @@ export default function Expenses() {
                     <StatusBadge s={e.status} />
                     {isAdmin && <span className="badge grey">{personName(e.creator, lang)}</span>}
                     {e.payer && <span className="badge blue">💵 {personName(e.payer, lang)}</span>}
+                    <SettleBadge e={e} />
                     {e.bill_path && <span className="badge grey">📷</span>}
                   </div>
                 </div>

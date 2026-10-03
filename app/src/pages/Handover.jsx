@@ -3,8 +3,34 @@ import { supabase } from '../lib/supabase.js';
 import { useLang } from '../lib/i18n.jsx';
 import { useAsync } from '../lib/useAsync.js';
 import { errMsg } from '../lib/errors.js';
-import { inr, fmtDateTime, fmtTime, fmtDate, personName } from '../lib/format.js';
+import { inr, fmtDateTime, fmtTime, fmtDate, fmtDay, personName } from '../lib/format.js';
 import { Page, Spinner, Empty, Modal, Field, useToast } from '../components/ui.jsx';
+import { useSettings } from '../context/SettingsContext.jsx';
+import { PayBackModal } from '../components/Settle.jsx';
+
+/** Version 7: a member's set-off expenses that are not in a cash handover yet – each can be paid back. */
+function MemberExpenses({ member, onPay }) {
+  const { t, lang, P } = useLang();
+  const { data, loading } = useAsync(async () => {
+    const { data: rows, error } = await supabase.from('expenses')
+      .select('*, payer:profiles!expenses_paid_by_fkey(id,full_name,name_te)')
+      .eq('paid_by', member.member_id).eq('status', 'approved').is('settled_mode', null).is('handover_id', null).order('expense_date');
+    if (error) throw error;
+    return rows;
+  }, [member.member_id]);
+  if (loading) return <Spinner sm />;
+  return (
+    <div className="list" style={{ marginTop: 6, background: '#f3f8f4', borderRadius: 10, padding: '0 8px' }} data-testid="member-expenses">
+      {(data || []).map((e) => (
+        <div key={e.id} className="li" style={{ cursor: 'default', padding: '7px 0' }}>
+          <div className="grow"><div className="main-t" style={{ fontSize: 13 }}>{P({ te: e.category_te, en: e.category_en }) || e.description || '—'}</div><div className="sub-t">{fmtDay(e.expense_date, lang)}{e.description && (e.category_te || e.category_en) ? ` · ${e.description}` : ''}</div></div>
+          <div className="amt" style={{ fontSize: 13, color: 'var(--kumkum)' }}>{inr(e.amount)}</div>
+          <button className="btn ok xs" onClick={() => onPay(e)} data-testid="member-expense-payback">{t('payback_short')}</button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function MemberReceipts({ memberId }) {
   const { lang } = useLang();
@@ -29,7 +55,11 @@ function MemberReceipts({ memberId }) {
 
 export default function Handover() {
   const { t, lang } = useLang();
+  const { settings } = useSettings();
+  const v7 = 'members_see_finance' in settings;
   const toast = useToast();
+  const [expOpen, setExpOpen] = useState(null);
+  const [pay, setPay] = useState(null);   // { expense, balance }
   const [confirm, setConfirm] = useState(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -47,8 +77,9 @@ export default function Handover() {
   }, []);
 
   const balances = (data?.balances || []).filter((m) => m.role !== 'admin');
-  const owing = balances.filter((m) => Number(m.balance) !== 0);
-  const settled = balances.filter((m) => Number(m.balance) === 0 && Number(m.cash_collected) > 0);
+  const canPayBack = (m) => v7 && Number(m.setoff_open) > 0;
+  const owing = balances.filter((m) => Number(m.balance) !== 0 || canPayBack(m));
+  const settled = balances.filter((m) => Number(m.balance) === 0 && !canPayBack(m) && Number(m.cash_collected) > 0);
   const totalWith = balances.reduce((a, m) => a + Math.max(0, Number(m.balance)), 0);
 
   const open = (m) => { setConfirm(m); setAmount(String(Math.abs(Number(m.balance)))); setNote(''); };
@@ -94,14 +125,19 @@ export default function Handover() {
                   </div>
                   <div className="num" style={{ fontSize: 11.5, background: '#fbf5ec', borderRadius: 8, padding: '6px 8px', marginTop: 8, color: '#6b4f3a' }}>
                     {t('breakdown', { cash: inr(m.cash_collected), exp: inr(m.expenses_approved), ho: inr(m.handed_over) })}
+                    {Number(m.paid_back) > 0 && <div data-testid="paid-back-line">{t('paid_back_line', { amount: inr(m.paid_back) })}</div>}
                   </div>
                   <div className="row" style={{ marginTop: 8 }}>
                     {Number(m.unsettled_count) > 0 && (
                       <button className="btn ghost sm" onClick={() => setExpanded(expanded === m.member_id ? null : m.member_id)}>{expanded === m.member_id ? t('hide_receipts') : t('show_receipts')}</button>
                     )}
-                    <button className={`btn ${bal > 0 ? 'ok' : 'ghost'} sm grow`} onClick={() => open(m)}>{bal > 0 ? t('confirm_received') : t('pay_member')}</button>
+                    {v7 && Number(m.setoff_open) > 0 && (
+                      <button className="btn ghost sm" onClick={() => setExpOpen(expOpen === m.member_id ? null : m.member_id)} data-testid="member-expenses-toggle">{t('expenses_n_btn', { n: m.setoff_open })}</button>
+                    )}
+                    {bal !== 0 && <button className={`btn ${bal > 0 ? 'ok' : 'ghost'} sm grow`} onClick={() => open(m)}>{bal > 0 ? t('confirm_received') : t('pay_member')}</button>}
                   </div>
                   {expanded === m.member_id && <MemberReceipts memberId={m.member_id} />}
+                  {expOpen === m.member_id && <MemberExpenses member={m} onPay={(e) => setPay({ expense: e, balance: bal })} />}
                 </div>
               );
             })}
@@ -139,14 +175,16 @@ export default function Handover() {
         {confirm && (
           <div className="stack">
             <div className="card stat warn"><small>{due < 0 ? t('committee_owes') : t('amount_due')}</small><b>{inr(Math.abs(due))}</b><em className="num">{t('breakdown', { cash: inr(confirm.cash_collected), exp: inr(confirm.expenses_approved), ho: inr(confirm.handed_over) })}</em></div>
-            <Field label={t('amount_received')}><input className="input big" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} autoFocus /></Field>
+            <Field label={due < 0 ? t('amount_paid_to', { name: personName(confirm, lang) }) : t('amount_received')}><input className="input big" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} autoFocus /></Field>
             {entered > 0 && diff > 0 && <div className="alert warn">{t('short_by', { amount: inr(diff) })}</div>}
             {entered > 0 && diff < 0 && <div className="alert info">{t('extra_by', { amount: inr(-diff) })}</div>}
             <Field label={t('note')} optional><input className="input" value={note} placeholder={t('handover_note_ph')} onChange={(e) => setNote(e.target.value)} /></Field>
-            <button className="btn ok block" style={{ padding: 14 }} disabled={busy} onClick={submit}>{busy ? t('saving') : t('confirm_received')}</button>
+            {due < 0 && v7 && Number(confirm.setoff_open) > 0 && <p className="hint">💡 {t('record_payment_hint')}</p>}
+            <button className="btn ok block" style={{ padding: 14 }} disabled={busy} onClick={submit}>{busy ? t('saving') : due < 0 ? t('confirm_paid') : t('confirm_received')}</button>
           </div>
         )}
       </Modal>
+      {pay && <PayBackModal expense={pay.expense} balance={pay.balance} onClose={() => setPay(null)} onDone={() => { setExpOpen(null); reload(true); }} />}
     </Page>
   );
 }

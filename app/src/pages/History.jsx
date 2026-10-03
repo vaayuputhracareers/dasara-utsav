@@ -19,7 +19,9 @@ function describe(a, t, people, lang) {
     parts.push(`${t('received_x', { amount: inr(d.received) })} / ${t('expected_x', { amount: inr(d.expected) })}`);
   } else if (a.entity === 'expense') {
     if (d.category) parts.push(d.category);
-    const am = pair(d.amount, inr); if (am) parts.push(am); else if (Array.isArray(d.amount)) parts.push(inr(d.amount[1]));
+    const am = pair(d.amount, inr); if (am) parts.push(am); else if (Array.isArray(d.amount)) parts.push(inr(d.amount[1])); else if (d.amount != null) parts.push(inr(d.amount));
+    if (d.member) parts.push(personName(people[d.member], lang));   // pay back (version 7)
+    if (d.mode) parts.push(d.mode === 'upi' ? t('temple_upi') : t('cash'));
     if (d.note) parts.push(d.note);
   } else if (a.entity === 'all' && a.action === 'data_deleted') {
     parts.push(t('audit_deleted_x', { d: d.donations ?? 0, e: d.expenses ?? 0, h: d.handovers ?? 0 }));
