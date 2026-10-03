@@ -272,7 +272,7 @@ Some new features need a one-time change in Supabase. **Your data stays as it is
 - **No "Donate" section / "Edit poster" cannot save / no Telugu boxes** → the database update (version 6) is
   missing: see *"Database update needed"* above.
 - **No cash in hand / cash at bank on the dashboard, or "Cash & Bank" says it needs an update** → the database
-  update (version 9) is missing: see *"Database update needed"* above.
+  update (version 10) is missing: see *"Database update needed"* above.
 - **Cash in hand or cash at bank shows below zero** → a cash handover, a bank deposit or a withdrawal is not entered
   yet, or an expense has the wrong mode (💵 Cash = from cash in hand, 📱 UPI = from the temple bank account).
 - **No "Pay back" choice for member expenses / no financial position switch on the Members page** → the database

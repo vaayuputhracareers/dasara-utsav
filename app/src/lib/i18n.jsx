@@ -748,6 +748,18 @@ const D = {
   cb_opening_line: ['ప్రారంభ నిల్వ', 'Opening balance'],
   fin_opening_incl: ['నిల్వలో ప్రారంభ నిల్వ {amount} కలిసి ఉంది', 'The balance includes the opening balance of {amount}'],
   cb_needs_db_opening: ['ప్రారంభ నిల్వ కోసం డేటాబేస్ అప్‌డేట్ (వెర్షన్ 9) అవసరం.', 'The opening balance needs the database update (version 9).'],
+  // ---- version 10: the admin deletes members ----
+  delete_member: ['🗑️ సభ్యుని తొలగించండి', '🗑️ Delete member'],
+  delete_member_hint: ['రసీదులు, ఖర్చులు లెక్కల్లో అలాగే ఉంటాయి — లాగిన్ మాత్రమే తొలగించబడుతుంది. ఈ మొబైల్ నంబర్‌ను మళ్ళీ వాడుకోవచ్చు.', 'Their receipts and expenses stay in the accounts – only the login is removed. The mobile number can be used again.'],
+  delete_member_confirm: ['{name}ను తొలగించాలా?\n\n{name} ఇకపై లాగిన్ కాలేరు, సభ్యుల జాబితాలో కనిపించరు. {name} చేసిన రసీదులు, ఖర్చులు, నగదు అప్పగింతలు లెక్కల్లో {name} పేరుతోనే ఉంటాయి.', "Delete {name}?\n\n{name} can no longer log in and will not appear in the members list. Receipts, expenses and cash handovers by {name} stay in the accounts under {name}'s name."],
+  member_deleted: ['{name} తొలగించబడ్డారు ✅', '{name} deleted ✅'],
+  member_deleted_kept: ['{name} తొలగించబడ్డారు ✅ — వారి రసీదులు / ఖర్చులు లెక్కల్లో ఉన్నాయి', '{name} deleted ✅ – their receipts / expenses stay in the accounts'],
+  err_member_has_balance: ['ఈ సభ్యుని నగదు బ్యాలెన్స్ ఇంకా సున్నా కాదు — ముందుగా "నగదు అప్పగింత"లో సర్దుబాటు చేయండి', "This member's cash balance is not zero yet – settle it in \"Cash handover\" first"],
+  err_member_has_pending: ['ఈ సభ్యుని ఖర్చులు ఆమోదం కోసం ఉన్నాయి — ముందుగా ఆమోదించండి లేదా తిరస్కరించండి', 'This member has expenses waiting for approval – approve or reject them first'],
+  err_cannot_delete_admin: ['అడ్మిన్‌ను నేరుగా తొలగించలేరు — ముందుగా సభ్యునిగా మార్చండి', 'An admin cannot be deleted directly – change them to a member first'],
+  err_cannot_delete_self: ['మిమ్మల్ని మీరే తొలగించలేరు', 'You cannot delete yourself'],
+  status_deleted: ['తొలగించారు', 'Deleted'],
+  audit_member_deleted: ['సభ్యుని తొలగింపు', 'Member deleted'],
 };
 
 export const DICT = D;

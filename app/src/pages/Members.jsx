@@ -96,7 +96,7 @@ export default function Members() {
     const totals = Object.fromEntries(((dsh.data && dsh.data.by_member) || []).map((m) => [m.id, m]));
     return { people: p.data || [], totals };
   }, []);
-  const people = data?.people || [];
+  const people = useMemo(() => (data?.people || []).filter((p) => p.status !== 'deleted'), [data]);   // version 10
   const pending = people.filter((p) => p.status === 'pending');
   const others = useMemo(() => people.filter((p) => p.status !== 'pending').sort((a, b) => (a.role === b.role ? a.full_name.localeCompare(b.full_name) : a.role === 'admin' ? -1 : 1)), [people]);
 
@@ -130,6 +130,22 @@ export default function Members() {
     toast(okMsg || t('member_saved'), 'success');
     reload(true);
     return true;
+  };
+  // Version 10 – delete a member (records stay in the accounts; see admin_delete_member in setup.sql)
+  const doDelete = async () => {
+    const name = sel.full_name || sel.name_te || sel.mobile || '';
+    if (!window.confirm(t('delete_member_confirm', { name }))) return;
+    setBusy(true);
+    const { data: r, error } = await supabase.rpc('admin_delete_member', { p_user: sel.id });
+    setBusy(false);
+    if (error) {
+      const old = error.code === 'PGRST202' || /Could not find the function/i.test(error.message || '');
+      toast(old ? t('err_db_update_needed') : errMsg(error, t), 'error', 7000);
+      return;
+    }
+    toast(r?.mode === 'kept' ? t('member_deleted_kept', { name }) : t('member_deleted', { name }), 'success', 6000);
+    setSel(null);
+    reload(true);
   };
   const doReset = async () => {
     if (!isPin(newPin)) return toast(t('pin_invalid'), 'error');
@@ -238,6 +254,12 @@ export default function Members() {
               <span className="hint">{t('pin_member_hint')}</span>
               <button className="btn ghost block" disabled={busy} onClick={doReset} data-testid="reset-pin-btn">{t('reset_pin')}</button>
             </div>
+            {!isMe && sel.role !== 'admin' && (
+              <div className="stack tight">
+                <button className="btn ghost danger-t block" disabled={busy} onClick={doDelete} data-testid="delete-member">{t('delete_member')}</button>
+                <span className="hint">{t('delete_member_hint')}</span>
+              </div>
+            )}
           </div>
         ))}
       </Modal>

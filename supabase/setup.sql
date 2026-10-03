@@ -6,7 +6,7 @@
 --  Safe to run again later (it only adds what is missing / updates logic).
 --
 --  What it creates:
---    • profiles        – admin & team members (login = mobile number + 6-digit PIN)
+--    • profiles        – admin & team members (login = mobile number + 6-digit PIN; the admin can delete members)
 --    • member_invites  – accounts the admin is creating
 --    • app_settings    – ALL editable names/settings (temple, committee…)
 --    • donations       – every receipt, stamped with the collector
@@ -32,11 +32,14 @@ create table if not exists public.profiles (
   name_te      text not null default '',              -- Telugu name (used on receipts)
   mobile       text unique,                           -- login id (10 digits)
   role         text not null default 'member' check (role in ('admin','member')),
-  status       text not null default 'pending' check (status in ('pending','active','blocked')),
+  status       text not null default 'pending' check (status in ('pending','active','blocked','deleted')),
   created_at   timestamptz not null default now(),
   approved_by  uuid,
   approved_at  timestamptz
 );
+-- version 10 upgrade: 'deleted' = a deleted member whose receipts / expenses stay in the accounts
+alter table public.profiles drop constraint if exists profiles_status_check;
+alter table public.profiles add constraint profiles_status_check check (status in ('pending','active','blocked','deleted'));
 
 create table if not exists public.member_invites (
   mobile      text primary key check (mobile ~ '^[0-9]{10}$'),
@@ -490,7 +493,9 @@ end $$;
 create or replace function public.profiles_guard() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  new.mobile := old.mobile;   -- login id never changes
+  if coalesce(current_setting('app.member_delete', true), '') <> 'on' then
+    new.mobile := old.mobile;   -- login id never changes (only admin_delete_member() frees it)
+  end if;
   if auth.uid() is not null and new.id = auth.uid()
      and (new.role is distinct from old.role or new.status is distinct from old.status) then
     raise exception 'cannot_change_own_role';
@@ -506,7 +511,8 @@ begin
     new.approved_by := auth.uid();
     new.approved_at := now();
   end if;
-  if new.role is distinct from old.role or new.status is distinct from old.status then
+  if (new.role is distinct from old.role or new.status is distinct from old.status)
+     and coalesce(current_setting('app.member_delete', true), '') <> 'on' then
     perform public.write_audit('member_changed', 'profile', new.id::text,
       jsonb_build_object('name', new.full_name, 'role', jsonb_build_array(old.role, new.role),
                          'status', jsonb_build_array(old.status, new.status)));
@@ -1014,7 +1020,7 @@ begin
                    left join (select paid_by, count(*) n from public.expenses   -- set off, not yet in a handover → can be paid back
                               where status = 'approved' and paid_by is not null and settled_mode is null and handover_id is null
                               group by 1) so on so.paid_by = b.member_id
-                   where b.role <> 'admin' or b.balance <> 0), '[]'::jsonb);
+                   where (b.role <> 'admin' and b.status <> 'deleted') or b.balance <> 0), '[]'::jsonb);
 end $$;
 
 -- Day-end cash handover (admin confirms money received from a member)
@@ -1148,6 +1154,66 @@ begin
   return v_mobile;
 end $$;
 
+-- Version 10 – the admin deletes a member (never an admin, never themselves).
+--   • no receipts / expenses / handovers → the member and the login are removed completely
+--   • with records → the records stay in the accounts (with the name); the login is closed, the member
+--     disappears from the members list and the mobile number is free to be used again
+-- Not allowed while the member still holds cash / is owed money, or has expenses waiting for approval.
+create or replace function public.admin_delete_member(p_user uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  p public.profiles%rowtype;
+  v_bal numeric;
+  v_records bigint;
+  v_mode text := 'removed';
+begin
+  if not public.is_admin() then raise exception 'not_allowed'; end if;
+  if p_user = auth.uid() then raise exception 'cannot_delete_self'; end if;
+  select * into p from public.profiles where id = p_user for update;
+  if not found or p.status = 'deleted' then raise exception 'member_not_found'; end if;
+  if p.role = 'admin' then raise exception 'cannot_delete_admin'; end if;
+  select balance into v_bal from public.member_balances_internal() where member_id = p_user;
+  if coalesce(v_bal, 0) <> 0 then raise exception 'member_has_balance'; end if;
+  if exists (select 1 from public.expenses where status = 'pending' and (created_by = p_user or paid_by = p_user)) then
+    raise exception 'member_has_pending';
+  end if;
+  select (select count(*) from public.donations where collected_by = p_user or cancelled_by = p_user or upi_verified_by = p_user)
+       + (select count(*) from public.expenses where created_by = p_user or paid_by = p_user or reviewed_by = p_user or settled_by = p_user)
+       + (select count(*) from public.handovers where member_id = p_user or received_by = p_user)
+       + (select count(*) from public.cash_transfers where created_by = p_user)
+    into v_records;
+
+  perform set_config('app.member_delete', 'on', true);
+  if v_records = 0 then
+    begin
+      delete from auth.users where id = p_user;   -- the profile goes with it (on delete cascade)
+    exception when insufficient_privilege or foreign_key_violation then
+      v_mode := 'kept';
+    end;
+    if v_mode = 'removed' then
+      delete from public.profiles where id = p_user;   -- a profile without a login
+    end if;
+  else
+    v_mode := 'kept';
+  end if;
+  if v_mode = 'kept' then
+    update public.profiles set status = 'deleted', mobile = null where id = p_user;
+    begin   -- close the login and free the mobile number for a new account
+      update auth.users
+         set email = 'deleted.' || replace(p_user::text, '-', '') || '@members.utsav.invalid',
+             banned_until = '2999-12-31 00:00:00+00', updated_at = now()
+       where id = p_user;
+      delete from auth.sessions where user_id = p_user;
+    exception when others then
+      null;   -- not allowed here: the member still cannot use the app (status 'deleted')
+    end;
+  end if;
+  perform set_config('app.member_delete', '', true);
+  perform public.write_audit('member_deleted', 'profile', p_user::text,
+    jsonb_build_object('name', p.full_name, 'mobile', p.mobile, 'records', v_records, 'kept', v_mode = 'kept'));
+  return jsonb_build_object('mode', v_mode, 'records', v_records, 'name', p.full_name);
+end $$;
+
 create or replace function public.admin_reset_password(p_user uuid, p_password text)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
@@ -1179,7 +1245,7 @@ end $$;
 --   5 = puja schedule   6 = "Donate" (UPI) on the public page, QR poster editor, Telugu names in the schedules
 --   7 = member expenses paid back by the admin (cash / temple UPI), members may see the financial position
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 9 $$;
+language sql immutable set search_path = '' as $$ select 10 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1290,6 +1356,8 @@ grant execute on function public.get_dashboard(), public.get_my_summary(), publi
   public.set_upi_verified(uuid, boolean), public.mark_receipt_shared(uuid),
   public.review_expense(uuid, boolean, text), public.create_member_invite(text, text, text, text),
   public.admin_reset_password(uuid, text), public.regenerate_public_slug() to authenticated;
+revoke execute on function public.admin_delete_member(uuid) from public, anon;
+grant execute on function public.admin_delete_member(uuid) to authenticated;
 revoke execute on function public.settle_expense(uuid, text, text), public.get_finance_summary() from public, anon;
 grant execute on function public.settle_expense(uuid, text, text), public.get_finance_summary() to authenticated;
 

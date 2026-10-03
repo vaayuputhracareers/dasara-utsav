@@ -172,7 +172,7 @@ export function Waiting() {
   const { t } = useLang();
   const nav = useNavigate();
   const { profile, refreshProfile, signOut } = useAuth();
-  const blocked = profile?.status === 'blocked';
+  const blocked = profile?.status === 'blocked' || profile?.status === 'deleted';
   const closed = profile?.status === 'closed';
   return (
     <div className="auth">

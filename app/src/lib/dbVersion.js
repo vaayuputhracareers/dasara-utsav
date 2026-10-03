@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js';
 
 /** The database version (supabase/setup.sql → get_db_version) this build of the app needs. */
-export const REQUIRED_DB_VERSION = 9;
+export const REQUIRED_DB_VERSION = 10;
 
 /** 1 = database from before get_db_version existed, null = could not check (offline). */
 export async function getDbVersion() {

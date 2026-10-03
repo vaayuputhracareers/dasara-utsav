@@ -38,6 +38,7 @@ function describe(a, t, people, lang) {
     if (d.file) parts.push(d.file);
   } else if (a.entity === 'profile') {
     parts.push(d.name || personName(people[a.entity_id], lang) || '');
+    if (a.action === 'member_deleted' && d.mobile) parts.push(d.mobile);
     const r = pair(d.role); if (r) parts.push(r);
     const s = pair(d.status); if (s) parts.push(s);
   }
