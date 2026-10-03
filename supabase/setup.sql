@@ -14,6 +14,7 @@
 --    • handovers       – day-end cash handed to admin
 --    • festival_days / programs – schedule & alankaram
 --    • pujas           – puja schedule: which family does the puja on which day
+--    • cash_transfers  – cash deposited into / withdrawn from the bank (cash in hand ⇄ cash at bank)
 --    • audit_log       – history of every important change
 --    • storage buckets – 'bills' (private) and 'assets' (logo + splash picture, public)
 --  Security: Row Level Security is ON for every table.
@@ -254,6 +255,20 @@ alter table public.pujas    add column if not exists family_name_te text not nul
 alter table public.pujas    add column if not exists village_te     text not null default '';
 alter table public.pujas    add column if not exists gotram_te      text not null default '';   -- team only, like gotram
 
+-- Added in version 8 – cash moved between "cash in hand" and the bank, so both balances stay right:
+--   deposit    = cash deposited into the bank   (cash in hand ↓, cash at bank ↑)
+--   withdrawal = cash withdrawn from the bank   (cash at bank ↓, cash in hand ↑)
+create table if not exists public.cash_transfers (
+  id             uuid primary key default gen_random_uuid(),
+  transfer_date  date not null default ((now() at time zone 'Asia/Kolkata')::date),
+  kind           text not null check (kind in ('deposit', 'withdrawal')),
+  amount         numeric(12,2) not null check (amount > 0),
+  note           text not null default '',
+  created_by     uuid references public.profiles(id),
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
 create table if not exists public.audit_log (
   id         bigint generated always as identity primary key,
   at         timestamptz not null default now(),
@@ -273,6 +288,7 @@ create index if not exists expenses_paid_by_idx       on public.expenses (paid_b
 create index if not exists programs_date_idx          on public.programs (program_date, start_time);
 create index if not exists pujas_date_idx             on public.pujas (puja_date, puja_time);
 create index if not exists handovers_member_idx       on public.handovers (member_id);
+create index if not exists cash_transfers_date_idx    on public.cash_transfers (transfer_date);
 create index if not exists audit_at_idx               on public.audit_log (at desc);
 
 -- ---------------------------------------------------------------------
@@ -592,6 +608,38 @@ drop trigger if exists settings_before_update on public.app_settings;
 create trigger settings_before_update before update on public.app_settings
   for each row execute function public.settings_before_update();
 
+-- 3f. Cash ⇄ bank entries (version 8): who wrote them + change history
+create or replace function public.cash_transfers_write() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'DELETE' then
+    perform public.write_audit('transfer_deleted', 'transfer', old.id::text,
+      jsonb_build_object('kind', old.kind, 'amount', old.amount, 'date', old.transfer_date, 'note', nullif(old.note, '')));
+    return old;
+  end if;
+  new.note := btrim(coalesce(new.note, ''));
+  new.updated_at := now();
+  if tg_op = 'INSERT' then
+    new.created_by := coalesce(auth.uid(), new.created_by);
+    new.created_at := now();
+    perform public.write_audit('transfer_added', 'transfer', new.id::text,
+      jsonb_build_object('kind', new.kind, 'amount', new.amount, 'date', new.transfer_date, 'note', nullif(new.note, '')));
+  else
+    new.created_by := old.created_by;
+    new.created_at := old.created_at;
+    if (new.kind, new.amount, new.transfer_date, new.note) is distinct from (old.kind, old.amount, old.transfer_date, old.note) then
+      perform public.write_audit('transfer_changed', 'transfer', old.id::text,
+        jsonb_build_object('kind', jsonb_build_array(old.kind, new.kind), 'amount', jsonb_build_array(old.amount, new.amount),
+                           'date', jsonb_build_array(old.transfer_date, new.transfer_date), 'note', nullif(new.note, '')));
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists cash_transfers_write on public.cash_transfers;
+create trigger cash_transfers_write before insert or update or delete on public.cash_transfers
+  for each row execute function public.cash_transfers_write();
+
 -- ---------------------------------------------------------------------
 -- 4. ROW LEVEL SECURITY (who can see / change what)
 -- ---------------------------------------------------------------------
@@ -604,6 +652,7 @@ alter table public.expenses       enable row level security;
 alter table public.festival_days  enable row level security;
 alter table public.programs       enable row level security;
 alter table public.pujas          enable row level security;
+alter table public.cash_transfers enable row level security;
 alter table public.audit_log      enable row level security;
 alter table public.receipt_counter enable row level security;   -- no policies: only server functions touch it
 
@@ -677,6 +726,11 @@ drop policy if exists pujas_write on public.pujas;
 create policy pujas_write on public.pujas for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
+-- cash ⇄ bank entries (version 8): admin only
+drop policy if exists transfers_admin on public.cash_transfers;
+create policy transfers_admin on public.cash_transfers for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
 -- audit log (admin read only)
 drop policy if exists audit_select on public.audit_log;
 create policy audit_select on public.audit_log for select to authenticated
@@ -687,7 +741,7 @@ grant usage on schema public to anon, authenticated;
 revoke all on all tables in schema public from anon;
 grant select, insert, update, delete on public.profiles, public.member_invites, public.app_settings,
   public.handovers, public.donations, public.expenses, public.festival_days, public.programs,
-  public.pujas, public.audit_log to authenticated;
+  public.pujas, public.cash_transfers, public.audit_log to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 5. FUNCTIONS CALLED BY THE APP
@@ -808,6 +862,8 @@ language plpgsql stable security definer set search_path = '' as $$
 declare
   v_today date := (now() at time zone 'Asia/Kolkata')::date;
   r jsonb;
+  v_dep numeric; v_wd numeric; v_tr bigint; v_cexp numeric; v_uexp numeric; v_setoff numeric; v_ho numeric;
+  v_committee numeric; v_bank numeric;
 begin
   if not public.is_admin() then raise exception 'not_allowed'; end if;
   with d as (select * from public.donations where status = 'active'),
@@ -823,6 +879,7 @@ begin
     'today_total',     coalesce((select sum(amount) from d where (collected_at at time zone 'Asia/Kolkata')::date = v_today), 0),
     'today_count',     (select count(*) from d where (collected_at at time zone 'Asia/Kolkata')::date = v_today),
     'cash_with_members', coalesce((select sum(balance) from b where role <> 'admin' and balance > 0), 0),
+    'admin_cash',        coalesce((select sum(balance) from b where role = 'admin'), 0),   -- cash admins collected themselves
     'members_with_cash', (select count(*) from b where role <> 'admin' and balance > 0),
     'owed_to_members',   coalesce((select -sum(balance) from b where role <> 'admin' and balance < 0), 0),
     'paid_back_total',   coalesce((select sum(amount) from e where settled_mode is not null), 0),
@@ -845,6 +902,32 @@ begin
         from d join public.profiles p on p.id = d.collected_by
         group by p.id, p.full_name, p.name_te, p.role) x), '[]'::jsonb)
   ) into r;
+
+  -- Version 8 – where the money is. Net position = cash in hand + cash at bank − what the committee owes members.
+  --   cash at bank  = UPI donations − committee expenses paid by UPI − pay backs by temple UPI + deposits − withdrawals
+  --   cash in hand  = with the committee + still with members, where
+  --   with committee = cash admins collected + cash handed over − committee expenses paid in cash
+  --                    − pay backs in cash − deposits + withdrawals
+  select coalesce(sum(amount) filter (where kind = 'deposit'), 0), coalesce(sum(amount) filter (where kind = 'withdrawal'), 0), count(*)
+    into v_dep, v_wd, v_tr from public.cash_transfers;
+  select coalesce(sum(amount) filter (where paid_by is null and payment_mode = 'cash'), 0),
+         coalesce(sum(amount) filter (where paid_by is null and payment_mode = 'upi'), 0),
+         coalesce(sum(amount) filter (where paid_by is not null and settled_mode is null), 0)
+    into v_cexp, v_uexp, v_setoff from public.expenses where status = 'approved';
+  select coalesce(sum(amount_received), 0) into v_ho from public.handovers;
+  v_committee := (r->>'admin_cash')::numeric + v_ho - v_cexp - (r->>'paid_back_cash')::numeric - v_dep + v_wd;
+  v_bank := (r->>'upi_total')::numeric - v_uexp - (r->>'paid_back_upi')::numeric + v_dep - v_wd;
+  r := r || jsonb_build_object(
+    'cash_with_committee', v_committee,
+    'cash_in_hand',        v_committee + (r->>'cash_with_members')::numeric,
+    'bank_balance',        v_bank,
+    'committee_cash_exp',  v_cexp,
+    'committee_upi_exp',   v_uexp,
+    'member_exp_setoff',   v_setoff,
+    'handed_over_total',   v_ho,
+    'deposits_total',      v_dep,
+    'withdrawals_total',   v_wd,
+    'transfers_count',     v_tr);
   return r;
 end $$;
 
@@ -1058,7 +1141,7 @@ end $$;
 --   5 = puja schedule   6 = "Donate" (UPI) on the public page, QR poster editor, Telugu names in the schedules
 --   7 = member expenses paid back by the admin (cash / temple UPI), members may see the financial position
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 7 $$;
+language sql immutable set search_path = '' as $$ select 8 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1102,6 +1185,7 @@ begin
     'programs',        (select count(*) from public.programs),
     'festival_days',   (select count(*) from public.festival_days),
     'pujas',           (select count(*) from public.pujas),
+    'transfers',       (select count(*) from public.cash_transfers),
     'history',         (select count(*) from public.audit_log));
 
   delete from public.donations where true;      -- "where true": allowed even where DELETE-without-WHERE is blocked
@@ -1110,6 +1194,7 @@ begin
   delete from public.programs where true;
   delete from public.festival_days where true;
   delete from public.pujas where true;
+  delete from public.cash_transfers where true;
   delete from public.audit_log where true;
   update public.receipt_counter set last_no = 0 where id = 1;
 

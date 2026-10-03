@@ -1,5 +1,6 @@
 // Settings → Data: yearly Excel export, bill-photo ZIP and "delete all data" (admin only).
 import { settlementLabel } from './settle.js';
+import { TRANSFER_SELECT, transferRows } from './cashbank.js';
 import { supabase, fetchAll } from './supabase.js';
 import { exportSheets } from './exportXlsx.js';
 import { makeZip, saveBlob } from './zip.js';
@@ -17,6 +18,7 @@ const SOURCES = [
   { table: 'programs', col: 'program_date', kind: 'date' },
   { table: 'festival_days', col: 'day_date', kind: 'date' },
   { table: 'pujas', col: 'puja_date', kind: 'date', optional: true },   // version 5 – missing before the update
+  { table: 'cash_transfers', col: 'transfer_date', kind: 'date', optional: true },   // version 8 – cash ⇄ bank entries
 ];
 /** A table that is missing until the database update (e.g. the puja schedule before version 5). */
 const missing = (s, error) => !!s.optional && !!error && (['PGRST205', '42P01'].includes(error.code) || /schema cache|does not exist/i.test(String(error.message || '')));
@@ -105,8 +107,18 @@ async function fetchPujas(y) {
   }
 }
 
+const TRANSFERS = SOURCES.find((s) => s.table === 'cash_transfers');
+async function fetchTransfers(y) {
+  try {
+    return await fetchAll(() => byYear(supabase.from('cash_transfers').select(TRANSFER_SELECT), 'transfer_date', y, 'date').order('transfer_date').order('created_at').order('id'));
+  } catch (e) {
+    if (missing(TRANSFERS, e)) return [];
+    throw e;
+  }
+}
+
 export async function fetchYear(y) {
-  const [donations, expenses, handovers, programs, days, profiles, pujas] = await Promise.all([
+  const [donations, expenses, handovers, programs, days, profiles, pujas, transfers] = await Promise.all([
     fetchAll(() => byYear(supabase.from('donations').select(DON_SELECT), 'collected_at', y, 'ts').order('collected_at').order('id')),
     fetchAll(() => byYear(supabase.from('expenses').select(EXP_SELECT), 'expense_date', y, 'date').order('expense_date').order('created_at').order('id')),
     fetchAll(() => byYear(supabase.from('handovers').select('*'), 'received_at', y, 'ts').order('received_at').order('id')),
@@ -114,8 +126,9 @@ export async function fetchYear(y) {
     fetchAll(() => byYear(supabase.from('festival_days').select('*'), 'day_date', y, 'date').order('day_date')),
     fetchAll(() => supabase.from('profiles').select('id,full_name,name_te,mobile,role,status').order('created_at').order('id')),
     fetchPujas(y),
+    fetchTransfers(y),
   ]);
-  return { donations, expenses, handovers, programs, days, profiles, pujas };
+  return { donations, expenses, handovers, programs, days, profiles, pujas, transfers };
 }
 
 /** File name of a bill photo inside the ZIP (also written in the Excel "Bill File" column). */
@@ -195,6 +208,7 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     Note: h.note || '',
   }));
 
+  const transfers = data.transfers || [];
   const memberRows = profiles.map((p) => {
     const mine = valid.filter((d) => d.collected_by === p.id);
     const mCash = sum(mine.filter((d) => d.payment_mode === 'cash'));
@@ -248,6 +262,29 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     c.n++; c.s += Number(e.amount); cats.set(k, c);
   });
   const both = (te, en) => [en, te].filter(Boolean).join(' / ');
+  // Version 8 – net position = cash in hand + cash at bank − what the committee owes members
+  const deposits = transfers.filter((x) => x.kind === 'deposit');
+  const withdrawals = transfers.filter((x) => x.kind === 'withdrawal');
+  const committeeCashExp = approved.filter((e) => !e.paid_by && e.payment_mode === 'cash');
+  const committeeUpiExp = approved.filter((e) => !e.paid_by && e.payment_mode === 'upi');
+  const setOff = approved.filter((e) => e.paid_by && !e.settled_mode);
+  const backCash = approved.filter((e) => e.settled_mode === 'cash');
+  const backUpi = approved.filter((e) => e.settled_mode === 'upi');
+  const memberBal = memberRows.filter((r) => r.Role !== 'Admin').map((r) => r['Cash Balance']);
+  const withMembers = n2(memberBal.reduce((a, b) => a + Math.max(b, 0), 0));
+  const owed = n2(memberBal.reduce((a, b) => a + Math.max(-b, 0), 0));
+  const bankBal = n2(sum(upi) - sum(committeeUpiExp) - sum(backUpi) + sum(deposits) - sum(withdrawals));
+  const cashInHand = n2(sum(cash) - sum(committeeCashExp) - sum(setOff) - sum(backCash) - sum(deposits) + sum(withdrawals) + owed);
+  const cashBankRows = [
+    ['CASH IN HAND (with committee + with members)', '', cashInHand],
+    ['      With the committee (admin)', '', n2(cashInHand - withMembers)],
+    ['      Still with members', '', withMembers],
+    ['CASH AT BANK', '', bankBal],
+    ...(owed > 0 ? [['Committee owes members (they spent their own money)', '', owed]] : []),
+    ['Cash deposited into bank', deposits.length, sum(deposits)],
+    ['Cash withdrawn from bank', withdrawals.length, sum(withdrawals)],
+  ];
+
   const summary = [
     ['Temple', both(settings.temple_name_te, settings.temple_name_en)],
     ['Committee', both(settings.committee_name_te, settings.committee_name_en)],
@@ -266,6 +303,7 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     ['Expenses – waiting for approval', pending.length, sum(pending)],
     ['Expenses – rejected', rejected.length, sum(rejected)],
     ['NET POSITION (valid donations − approved expenses)', '', n2(sum(valid) - sum(approved))],
+    ...cashBankRows,
     ['Cash handed over to admin', handovers.length, sum(handovers, (h) => h.amount_received)],
     ['Member expenses paid back – cash', approved.filter((e) => e.settled_mode === 'cash').length, sum(approved.filter((e) => e.settled_mode === 'cash'))],
     ['Member expenses paid back – temple UPI', approved.filter((e) => e.settled_mode === 'upi').length, sum(approved.filter((e) => e.settled_mode === 'upi'))],
@@ -274,7 +312,7 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     ['Approved expenses by category', 'Count', 'Amount (₹)'],
     ...[...cats.entries()].sort((a, b) => b[1].s - a[1].s).map(([k, c]) => [k, c.n, n2(c.s)]),
     [],
-    ['Sheets in this file: Summary, Donations, Expenses, Cash handovers, Members, Day-wise, Programs, Alankaram, Puja schedule'],
+    ['Sheets in this file: Summary, Donations, Expenses, Cash handovers, Cash & Bank, Members, Day-wise, Programs, Alankaram, Puja schedule'],
     ['Bill photos: Settings → Export data → "Bill photos (ZIP)". The "Bill File" column in Expenses matches the file names.'],
   ];
 
@@ -283,6 +321,7 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     { name: 'Donations', rows: donationRows, money: ['Amount'], filter: true },
     { name: 'Expenses', rows: expenseRows, money: ['Amount'], filter: true },
     { name: 'Cash handovers', rows: handoverRows, money: ['Due', 'Received', 'Difference'], filter: true },
+    { name: 'Cash & Bank', rows: transferRows(transfers, dayCell), money: ['Amount', 'Cash In Hand', 'Cash At Bank'], filter: true },
     { name: 'Members', rows: memberRows, money: ['Cash Collected', 'UPI Collected', 'Total Collected', 'Expenses Set Off', 'Expenses Paid Back', 'Cash Handed Over', 'Cash Balance'], filter: true },
     { name: 'Day-wise', rows: dayRows, money: ['Cash', 'UPI', 'Total Donations', 'Expenses (approved)', 'Net For The Day'] },
     { name: 'Programs', rows: programRows, filter: true },
@@ -296,7 +335,7 @@ export async function exportYear(y, ctx) {
   const data = await fetchYear(y);
   const fileName = `${filePrefix(ctx.settings, y)}-records-${todayIST()}.xlsx`;
   await exportSheets(fileName, buildSheets(data, { ...ctx, year: y }));
-  const details = { file: fileName, donations: data.donations.length, expenses: data.expenses.length, handovers: data.handovers.length, programs: data.programs.length, pujas: (data.pujas || []).length };
+  const details = { file: fileName, donations: data.donations.length, expenses: data.expenses.length, handovers: data.handovers.length, programs: data.programs.length, pujas: (data.pujas || []).length, transfers: (data.transfers || []).length };
   try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ at: new Date().toISOString(), entity_id: y ? String(y) : 'all', ...details })); } catch { /* private mode */ }
   await supabase.rpc('log_data_export', { p_year: y || null, p_details: details }).then(() => {}, () => {}); // older database: skip
   return details;
@@ -337,6 +376,7 @@ async function lastChange(y) {
     q('handovers', 'received_at', 'received_at', 'ts'),
     q('programs', 'created_at', 'program_date', 'date'),
     q('pujas', 'updated_at', 'puja_date', 'date'),   // null (no error thrown) before the version 5 update
+    q('cash_transfers', 'updated_at', 'transfer_date', 'date'),   // null before the version 8 update
   ]);
   return v.filter(Boolean).sort((a, b) => Date.parse(a) - Date.parse(b)).pop() || null;
 }

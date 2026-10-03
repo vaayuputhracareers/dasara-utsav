@@ -50,6 +50,7 @@ export default function Layout({ children }) {
     { to: '/donations', icon: '💰', label: t('nav_donations') },
     { to: '/expenses', icon: '🧾', label: t('nav_expenses'), badge: pc.expenses },
     { to: '/handover', icon: '🤝', label: t('nav_handover') },
+    { to: '/cash-bank', icon: '🏦', label: t('nav_cash_bank') },
     { to: '/programs', icon: '📅', label: t('nav_programs') },
     { to: '/puja', icon: '🪔', label: t('nav_puja') },
     { to: '/members', icon: '👥', label: t('nav_members'), badge: pc.members },

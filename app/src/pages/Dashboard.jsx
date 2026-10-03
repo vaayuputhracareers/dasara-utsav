@@ -10,6 +10,7 @@ import { Page, Spinner, Empty, useToast } from '../components/ui.jsx';
 import { DONATION_SELECT, donationRows } from './Donations.jsx';
 import { DbUpdateNotice, useDbVersion } from '../components/DataTools.jsx';
 import { EXPENSE_SELECT, expenseRows } from './Expenses.jsx';
+import { TRANSFER_SELECT, hasCashBank, transferRows } from '../lib/cashbank.js';
 
 const COLORS = ['#7a1d1d', '#ef7d1a', '#f6c344', '#c62828', '#16804a', '#9a3412', '#6d28d9', '#0e7490', '#a16207', '#be185d'];
 
@@ -34,10 +35,12 @@ export default function Dashboard() {
   const fullReport = async () => {
     try {
       toast(t('loading'));
-      const [dons, exps, hos] = await Promise.all([
+      const v8 = hasCashBank(d);
+      const [dons, exps, hos, trs] = await Promise.all([
         fetchAll(() => supabase.from('donations').select(DONATION_SELECT).order('collected_at')),
         fetchAll(() => supabase.from('expenses').select(EXPENSE_SELECT).order('expense_date')),
         fetchAll(() => supabase.from('handovers').select('*, member:profiles!handovers_member_id_fkey(full_name), receiver:profiles!handovers_received_by_fkey(full_name)').order('received_at')),
+        v8 ? fetchAll(() => supabase.from('cash_transfers').select(TRANSFER_SELECT).order('transfer_date').order('created_at')) : Promise.resolve([]),
       ]);
       const summary = [
         { Item: 'Total donations (valid)', Amount: Number(d.donations_total) },
@@ -45,6 +48,13 @@ export default function Dashboard() {
         { Item: '  UPI', Amount: Number(d.upi_total) },
         { Item: 'Total expenses (approved)', Amount: Number(d.expenses_total) },
         { Item: 'Net position', Amount: Number(d.donations_total) - Number(d.expenses_total) },
+        ...(v8 ? [
+          { Item: 'Cash in hand (with committee + with members)', Amount: Number(d.cash_in_hand) },
+          { Item: '  With committee (admin)', Amount: Number(d.cash_with_committee) },
+          { Item: 'Cash at bank', Amount: Number(d.bank_balance) },
+          { Item: 'Cash deposited into bank', Amount: Number(d.deposits_total) },
+          { Item: 'Cash withdrawn from bank', Amount: Number(d.withdrawals_total) },
+        ] : []),
         { Item: 'Cash still with members', Amount: Number(d.cash_with_members) },
         ...(d.owed_to_members != null ? [
           { Item: 'Committee owes members', Amount: Number(d.owed_to_members) },
@@ -59,11 +69,14 @@ export default function Dashboard() {
         { name: 'Expenses', rows: expenseRows(exps) },
         { name: 'Handovers', rows: hos.map((h) => ({ Date: fmtDateTime(h.received_at, 'en'), Member: h.member?.full_name, Due: Number(h.expected_amount), Received: Number(h.amount_received), Difference: Number(h.expected_amount) - Number(h.amount_received), 'Received By': h.receiver?.full_name, Note: h.note || '' })) },
         { name: 'By member', rows: (d.by_member || []).map((m) => ({ Member: m.full_name, Receipts: m.cnt, Cash: Number(m.cash), UPI: Number(m.upi), Total: Number(m.total) })) },
+        ...(v8 ? [{ name: 'Cash & Bank', rows: transferRows(trs) }] : []),
       ]);
     } catch (e) { toast(String(e.message || e), 'error'); }
   };
 
   const net = d ? Number(d.donations_total) - Number(d.expenses_total) : 0;
+  const split = hasCashBank(d);   // database version 8
+  const owed = d ? Number(d.owed_to_members || 0) : 0;
   const maxCat = d ? Math.max(1, ...d.by_category.map((c) => Number(c.total))) : 1;
   const days = d ? d.by_day.slice(-14) : [];
   const maxDay = Math.max(1, ...days.map((x) => Number(x.total)));
@@ -80,10 +93,33 @@ export default function Dashboard() {
       )}
       {loading && !d ? <Spinner /> : error && !d ? <div className="alert err">{t('network_error')} <button className="btn ghost xs" onClick={() => reload()}>{t('retry')}</button></div> : d && (
         <>
-          <div className={`net ${net >= 0 ? 'pos' : 'neg'}`}>
-            <div><small>{t('net_position')}</small><div className="big">{inrSigned(net)}</div><small>{t('donations_minus_expenses')}</small></div>
-            <span className="pill">{net >= 0 ? t('surplus') : t('deficit')}</span>
+          <div className={`net net-col ${net >= 0 ? 'pos' : 'neg'}`}>
+            <div className="net-top">
+              <div><small>{t('net_position')}</small><div className="big">{inrSigned(net)}</div><small>{t('donations_minus_expenses')}</small></div>
+              <span className="pill">{net >= 0 ? t('surplus') : t('deficit')}</span>
+            </div>
+            {split && (
+              <>
+                <div className="net-split" data-testid="net-split">
+                  <Link to="/cash-bank" data-testid="dash-cash-in-hand">
+                    <small>{t('cash_in_hand')}</small><b className="num">{inr(d.cash_in_hand)}</b>
+                    <em className="num">{t('with_committee_x', { amount: inr(d.cash_with_committee) })}</em>
+                    <em className="num">{t('with_members_x', { amount: inr(d.cash_with_members) })}</em>
+                  </Link>
+                  <span className="op">+</span>
+                  <Link to="/cash-bank" data-testid="dash-bank">
+                    <small>{t('cash_at_bank')}</small><b className="num">{inr(d.bank_balance)}</b>
+                    {Number(d.transfers_count) > 0 && <em className="num">{t('bank_moves_x', { dep: inr(d.deposits_total), wd: inr(d.withdrawals_total) })}</em>}
+                    {Number(d.upi_unverified_total) > 0 && <em className="num">{t('bank_unchecked_x', { amount: inr(d.upi_unverified_total) })}</em>}
+                    {!(Number(d.transfers_count) > 0) && !(Number(d.upi_unverified_total) > 0) && <em>{t('cb_details')}</em>}
+                  </Link>
+                </div>
+                {owed > 0 && <small className="net-owed" data-testid="net-owed">{t('net_owed_line', { amount: inr(owed) })}</small>}
+              </>
+            )}
           </div>
+          {split && Number(d.cash_with_committee) < 0 && <Link to="/cash-bank" className="alert warn">{t('cb_committee_negative')}</Link>}
+          {split && Number(d.bank_balance) < 0 && <Link to="/cash-bank" className="alert warn">{t('cb_bank_negative')}</Link>}
           <div className="grid2 grid-dash">
             <Link to="/donations" className="card stat link"><small>{t('total_donations')}</small><b>{inr(d.donations_total)}</b><em className="num">{t('cash_upi_split', { cash: inr(d.cash_total), upi: inr(d.upi_total) })}</em></Link>
             <Link to="/expenses" className="card stat bad link"><small>{t('total_expenses')}</small><b>{inr(d.expenses_total)}</b><em>{t('bills_n', { n: d.expenses_count })}</em></Link>

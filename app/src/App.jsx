@@ -23,6 +23,7 @@ const SettingsPage = lazy(() => import('./pages/Settings.jsx'));
 const PublicSettings = lazy(() => import('./pages/PublicSettings.jsx'));
 const More = lazy(() => import('./pages/More.jsx'));
 const History = lazy(() => import('./pages/History.jsx'));
+const CashBank = lazy(() => import('./pages/CashBank.jsx'));
 const PublicPage = lazy(() => import('./pages/PublicPage.jsx'));
 const ReceiptView = lazy(() => import('./pages/ReceiptView.jsx'));
 
@@ -61,6 +62,7 @@ function Private() {
             {isAdmin && (
               <>
                 <Route path="/handover" element={<Handover />} />
+                <Route path="/cash-bank" element={<CashBank />} />
                 <Route path="/members" element={<Members />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/public-page" element={<PublicSettings />} />

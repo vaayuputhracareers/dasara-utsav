@@ -182,6 +182,7 @@ add the TXT record that GitHub shows to Cloudflare DNS → **Verify**. This stop
 | Member (UPI) | Choose **UPI** → **Show temple UPI QR** → donor scans & pays → then Save |
 | Member (spent money) | **🧾 Expense** → amount, category, photo of bill → admin approves |
 | Admin, approving a member's expense | Choose how to settle it: **↔️ Set off against collections** (deducted from the cash that member hands over, now or later) or **💸 Pay back now** → **Cash** or **Temple UPI** (type the UPI transaction no. if you like) → **Approve**. Changed your mind? Open the expense → *Pay back* or *Undo pay back*. |
+| Admin, cash into / out of the bank | **☰ More → 🏦 Cash & Bank** → **🏦 Deposit cash into bank** or **💵 Withdraw cash from bank** → date, amount, note (slip no. / ATM) → **Save**. Cash in hand and cash at bank change at once. Tip: confirm the member's cash handover first, then record the deposit. |
 | Admin, night | **🤝 Cash handover** → collect cash from each member → **Confirm received** (if less is given, the difference stays on their balance). When the committee owes a member, tap **🧾 Expenses** on their card → **💸 Pay back** (cash or temple UPI). |
 | Admin | **🏦 UPI to check** → compare with the bank app → mark each UPI receipt as received |
 | Admin | **📊 Dashboard → Full report** → Excel file with all donations, expenses, handovers |
@@ -269,6 +270,10 @@ Some new features need a one-time change in Supabase. **Your data stays as it is
   UPI app shows one, enter it as a donation (payment **UPI**) so the donor gets a receipt.
 - **No "Donate" section / "Edit poster" cannot save / no Telugu boxes** → the database update (version 6) is
   missing: see *"Database update needed"* above.
+- **No cash in hand / cash at bank on the dashboard, or "Cash & Bank" says it needs an update** → the database
+  update (version 8) is missing: see *"Database update needed"* above.
+- **Cash in hand or cash at bank shows below zero** → a cash handover, a bank deposit or a withdrawal is not entered
+  yet, or an expense has the wrong mode (💵 Cash = from cash in hand, 📱 UPI = from the temple bank account).
 - **No "Pay back" choice for member expenses / no financial position switch on the Members page** → the database
   update (version 7) is missing: see *"Database update needed"* above.
 - **"Pay back" missing on a member's expense** → it was already used in a cash handover (set off), or it was paid

@@ -124,7 +124,7 @@ export function ExpenseForm({ open, onClose, onSaved, edit }) {
         </Field>
         <Field label={t('description')} optional><input className="input" value={f.description} onChange={(e) => set('description', e.target.value)} /></Field>
         <Field label={t('paid_to')} optional><input className="input" value={f.paid_to} onChange={(e) => set('paid_to', e.target.value)} /></Field>
-        <Field label={t('payment_mode')}><Seg value={f.payment_mode} onChange={(v) => set('payment_mode', v)} options={[{ value: 'cash', label: `💵 ${t('cash')}` }, { value: 'upi', label: '📱 UPI' }]} /></Field>
+        <Field label={t('payment_mode')} hint={isAdmin && !f.paid_by ? t('mode_from_hint') : undefined}><Seg value={f.payment_mode} onChange={(v) => set('payment_mode', v)} options={[{ value: 'cash', label: `💵 ${t('cash')}` }, { value: 'upi', label: '📱 UPI' }]} /></Field>
         {isAdmin && (
           <Field label={t('paid_from')}>
             <select className="input" value={f.paid_by} onChange={(e) => set('paid_by', e.target.value)}>
@@ -210,7 +210,7 @@ function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
           {e.description && <><dt>{t('description')}</dt><dd>{e.description}</dd></>}
           {e.paid_to && <><dt>{t('paid_to')}</dt><dd>{e.paid_to}</dd></>}
           <dt>{t('payment_mode')}</dt><dd>{e.payment_mode === 'upi' ? 'UPI' : t('cash')}</dd>
-          <dt>{t('paid_from')}</dt><dd>{e.payer ? t('member_cash_of', { name: personName(e.payer, lang) }) : t('committee_funds')}</dd>
+          <dt>{t('paid_from')}</dt><dd>{e.payer ? t('member_cash_of', { name: personName(e.payer, lang) }) : e.payment_mode === 'upi' ? t('committee_bank') : t('committee_funds')}</dd>
           <dt>{t('submitted_by')}</dt><dd>{personName(e.creator, lang)} · {fmtDateTime(e.created_at, lang)}</dd>
           {e.review_note && <><dt>{t('note')}</dt><dd>{e.review_note}</dd></>}
           {memberExp && e.status === 'approved' && (

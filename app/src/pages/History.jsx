@@ -23,6 +23,12 @@ function describe(a, t, people, lang) {
     if (d.member) parts.push(personName(people[d.member], lang));   // pay back (version 7)
     if (d.mode) parts.push(d.mode === 'upi' ? t('temple_upi') : t('cash'));
     if (d.note) parts.push(d.note);
+  } else if (a.entity === 'transfer') {   // version 8: cash ⇄ bank entries
+    const last = (v) => (Array.isArray(v) ? v[1] : v);
+    parts.push(last(d.kind) === 'withdrawal' ? t('tr_withdrawal') : t('tr_deposit'));
+    const am = pair(d.amount, inr); if (am) parts.push(am); else if (last(d.amount) != null) parts.push(inr(last(d.amount)));
+    const dt = pair(d.date); if (dt) parts.push(dt); else if (last(d.date)) parts.push(last(d.date));
+    if (d.note) parts.push(d.note);
   } else if (a.entity === 'all' && a.action === 'data_deleted') {
     parts.push(t('audit_deleted_x', { d: d.donations ?? 0, e: d.expenses ?? 0, h: d.handovers ?? 0 }));
     if (d.members_removed) parts.push(`${t('del_members')}: ${d.members_removed}`);

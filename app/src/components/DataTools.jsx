@@ -210,6 +210,7 @@ function DeleteFlow({ onClose, onDeleted }) {
                 <li><span>{t('del_expenses')}</span><b>{c.expenses}{info.expensesTotal ? ` · ${inr(info.expensesTotal)}` : ''}</b></li>
                 <li><span>{t('del_bills')}</span><b>{c.bills}</b></li>
                 <li><span>{t('del_handovers')}</span><b>{c.handovers}</b></li>
+                {c.cash_transfers > 0 && <li><span>{t('del_transfers')}</span><b>{c.cash_transfers}</b></li>}
                 <li><span>{t('del_programs')}</span><b>{c.programs + c.festival_days + (c.pujas || 0)}</b></li>
                 <li><span>{t('del_history')}</span><b>{info.history}</b></li>
                 {removeMembers && <li className="bad"><span>{t('del_members')}</span><b>{info.members}</b></li>}
