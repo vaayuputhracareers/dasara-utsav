@@ -1,6 +1,6 @@
 /* Light offline cache for the app shell. Supabase data is never cached.
    Works at any address: https://site.netlify.app/ or https://name.github.io/dasara-utsav/ */
-const CACHE = 'dasara-v4';
+const CACHE = 'dasara-v5';
 const BASE = new URL('./', self.location).pathname; // "/" or "/dasara-utsav/"
 const INDEX = BASE + 'index.html';
 const SHELL = [BASE, INDEX, BASE + 'manifest.webmanifest', BASE + 'icons/icon-192.png'];
@@ -21,9 +21,27 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))));
   self.clients.claim();
 });
+// Splash picture (Settings → Splash screen; a new file name for every upload): kept on the phone, so the
+// app opens with it at once. Only the newest one is kept.
+async function splashPicture(req) {
+  const c = await caches.open(CACHE);
+  const hit = await c.match(req.url);
+  if (hit) return hit;
+  const res = await fetch(req.url, { mode: 'cors', credentials: 'omit' });
+  if (res.ok) {
+    for (const k of await c.keys()) if (/\/assets\/splash-/.test(k.url) && k.url !== req.url) await c.delete(k);
+    await c.put(req.url, res.clone());
+  }
+  return res;
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
+  if (req.method === 'GET' && /\/storage\/v1\/object\/public\/assets\/splash-[^/]+$/.test(url.pathname)) {
+    e.respondWith(splashPicture(req));
+    return;
+  }
   if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/sb/')) return;
   if (req.mode === 'navigate') {
     // Network first, so a new version shows up immediately; the cached copy is only for offline.

@@ -14,7 +14,7 @@
 --    • handovers       – day-end cash handed to admin
 --    • festival_days / programs – schedule & alankaram
 --    • audit_log       – history of every important change
---    • storage buckets – 'bills' (private) and 'assets' (logo, public)
+--    • storage buckets – 'bills' (private) and 'assets' (logo + splash picture, public)
 --  Security: Row Level Security is ON for every table.
 -- =====================================================================
 
@@ -110,6 +110,11 @@ create table if not exists public.app_settings (
   show_net_position    boolean not null default false,
   updated_at           timestamptz not null default now()
 );
+
+-- Added in version 4 – splash screen: a full-screen picture shown for a few seconds when the app opens.
+alter table public.app_settings add column if not exists splash_url text not null default '';
+alter table public.app_settings add column if not exists splash_seconds int not null default 3
+  check (splash_seconds between 1 and 10);
 insert into public.app_settings (id) values (1) on conflict (id) do nothing;
 
 create table if not exists public.handovers (
@@ -617,6 +622,7 @@ language sql stable security definer set search_path = '' as $$
     'event_title_te', event_title_te, 'event_title_en', event_title_en,
     'event_year', event_year, 'start_date', start_date, 'end_date', end_date,
     'logo_url', logo_url, 'contact_phone', contact_phone,
+    'splash_url', splash_url, 'splash_seconds', splash_seconds,
     'allow_self_signup', allow_self_signup)
   from public.app_settings where id = 1;
 $$;
@@ -890,8 +896,9 @@ end $$;
 
 -- Version of this script. The app compares it with the version it needs and tells the admin
 -- "database update needed" (= run this file again) when it is older.
+--   2 = data tools (export / delete)   3 = 6-digit PIN reset + logo upload permission   4 = splash screen
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 3 $$;
+language sql immutable set search_path = '' as $$ select 4 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts

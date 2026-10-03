@@ -15,6 +15,68 @@
     <script src="/config.js"></script>
   </head>
   <body>
+    <script>
+      /* Splash screen (Settings → Splash screen): the full-screen picture appears at once, before the app
+         itself has loaded. Once per app start; never on donor receipt (/r/…) or public page (/p/…) links. */
+      (function () {
+        var KEY = 'dasara.splash';
+        function show(url, secs, bg) {
+          if (!url) return;
+          var old = document.getElementById('app-splash');
+          if (old && old.parentNode) old.parentNode.removeChild(old);
+          var wide = window.innerWidth > window.innerHeight * 0.8; // tablet / laptop: show the whole picture
+          var d = document.createElement('div');
+          d.id = 'app-splash';
+          d.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483000;overflow:hidden;cursor:pointer;' +
+            'opacity:1;transition:opacity .4s ease;background:' + (/^#[0-9a-f]{6}$/i.test(bg || '') ? bg : '#1f0d08');
+          var img = document.createElement('img');
+          img.alt = '';
+          img.crossOrigin = 'anonymous';
+          img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;max-width:none;max-height:none;object-fit:' + (wide ? 'contain' : 'cover') +
+            ';opacity:0;transition:opacity .25s';
+          var back = null;
+          if (wide) { // blurred copy of the picture fills the sides
+            back = document.createElement('img');
+            back.alt = '';
+            back.crossOrigin = 'anonymous';
+            back.setAttribute('aria-hidden', 'true');
+            back.style.cssText = 'position:absolute;top:-8%;left:-8%;width:116%;height:116%;max-width:none;max-height:none;object-fit:cover;filter:blur(24px) brightness(.75);opacity:0;transition:opacity .25s';
+            back.src = url;
+            d.appendChild(back);
+          }
+          var done = false, timer;
+          function close() {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            document.removeEventListener('keydown', onKey);
+            d.style.opacity = '0';
+            setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 450);
+          }
+          function onKey(e) { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') close(); }
+          img.onload = function () {
+            clearTimeout(timer);
+            img.style.opacity = '1';
+            if (back) back.style.opacity = '1';
+            timer = setTimeout(close, Math.min(10, Math.max(1, +secs || 3)) * 1000);
+          };
+          img.onerror = close;
+          timer = setTimeout(close, 4000); // picture not loading (weak network)? Don't hold the app back.
+          d.onclick = close;
+          document.addEventListener('keydown', onKey);
+          img.src = url;
+          d.appendChild(img);
+          (document.body || document.documentElement).appendChild(d);
+        }
+        window.dasaraSplash = show;
+        try {
+          var s = JSON.parse(localStorage.getItem(KEY) || 'null');
+          if (!s || !s.u || /\/(r|p)\/[^\/]+/.test(location.pathname) || sessionStorage.getItem(KEY)) return;
+          sessionStorage.setItem(KEY, '1');
+          show(s.u, s.s, s.c);
+        } catch (e) { /* no splash – the app opens normally */ }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

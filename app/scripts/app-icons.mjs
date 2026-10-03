@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
  * Makes the phone app icon (home screen, browser tab, iPhone) from the logo saved in the app's
- * Settings. Runs in the GitHub workflow after `vite build`. If anything goes wrong the website keeps
- * the default lamp icon – this script never stops a publish.
+ * Settings, and colours Android's start screen like the splash picture (Settings → Splash screen).
+ * Runs in the GitHub workflow after `vite build`. If anything goes wrong the website keeps the default
+ * lamp icon and colours – this script never stops a publish.
  *
  *   node scripts/app-icons.mjs --dist dist --config ../config.js
  *       → writes dist/icons/{icon-192,icon-512,maskable-512,apple-touch-icon}.png from the logo,
- *         dist/icons/icon-source.json (which logo was used) and adds ?v=<hash> to the icon links,
- *         so phones and caches pick up a new icon.
+ *         sets "background_color" in dist/manifest.webmanifest to the splash picture's average colour,
+ *         writes dist/icons/icon-source.json (which logo + splash were used) and adds ?v=<hash> to the
+ *         icon links, so phones and caches pick up a new icon.
  *
  *   node scripts/app-icons.mjs --check --site https://dasara.example.com/ --config ../config.js
- *       → prints/sets changed=true|false: is the logo in Settings different from the one the
- *         live website's icons were made from? (The scheduled workflow only rebuilds when true.)
+ *       → prints/sets changed=true|false: are the logo or splash picture in Settings different from the
+ *         ones the live website was made from? (The scheduled workflow only rebuilds when true.)
  */
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -41,8 +43,8 @@ function readConfig(file) {
 
 const okUrl = (u) => /^https:\/\//i.test(u) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(u);
 
-/** The logo address saved in Settings ('' = no logo). Throws when Supabase cannot be reached. */
-async function currentLogo(cfg) {
+/** Logo + splash picture addresses saved in Settings ('' = none). Throws when Supabase cannot be reached. */
+async function currentBranding(cfg) {
   if (!okUrl(cfg.url + '/') || !cfg.key) throw new Error('config.js has no Supabase details');
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -52,8 +54,8 @@ async function currentLogo(cfg) {
         signal: AbortSignal.timeout(20000),
       });
       if (!r.ok) throw new Error(`get_branding answered ${r.status}`);
-      const b = await r.json();
-      return String((b && b.logo_url) || '').trim();
+      const b = (await r.json()) || {};
+      return { logo: String(b.logo_url || '').trim(), splash: String(b.splash_url || '').trim() };
     } catch (e) { lastErr = e; await new Promise((res) => setTimeout(res, 2000 * (attempt + 1))); }
   }
   throw lastErr;
@@ -102,13 +104,33 @@ function stampIconLinks(dist) {
   return v;
 }
 
+/** Android shows background_color behind the icon while the app starts: use the splash picture's colour. */
+async function splashColour(sharp, dist, splash, source) {
+  const manifest = join(dist, 'manifest.webmanifest');
+  if (!splash || !existsSync(manifest)) return;
+  const { channels } = await sharp(await download(splash)).stats();
+  const hex = '#' + channels.slice(0, 3).map((c) => Math.round(c.mean).toString(16).padStart(2, '0')).join('');
+  writeFileSync(manifest, readFileSync(manifest, 'utf8').replace(/("background_color"\s*:\s*)"[^"]*"/, `$1"${hex}"`));
+  source.background_color = hex;
+  console.log(`Start screen colour ${hex} (from the splash picture): ${splash}`);
+}
+
 async function build() {
   const dist = args.dist || 'dist';
   if (!existsSync(join(dist, 'icons'))) throw new Error(`${dist}/icons not found – run vite build first`);
-  const source = { logo_url: null, made_at: new Date().toISOString() };
+  const source = { logo_url: null, splash_url: null, made_at: new Date().toISOString() };
   try {
     const cfg = readConfig(args.config || '../config.js');
-    const logo = await currentLogo(cfg);
+    const { logo, splash } = await currentBranding(cfg);
+    source.splash_url = splash;
+    if (splash) {
+      try {
+        await splashColour((await import('sharp')).default, dist, splash, source);
+      } catch (e) {
+        source.error = `splash picture: ${e.message || e}`;
+        warn(`Could not read the splash picture (${e.message || e}); the default start screen colour is used.`);
+      }
+    }
     if (!logo) {
       console.log('No logo in Settings – keeping the default lamp icon.');
       source.logo_url = '';
@@ -132,16 +154,16 @@ async function build() {
 async function check() {
   let changed = false;
   try {
-    const logo = await currentLogo(readConfig(args.config || '../config.js'));
+    const { logo, splash } = await currentBranding(readConfig(args.config || '../config.js'));
     const site = String(args.site || '').replace(/\/?$/, '/');
     let live = null;
     try {
       const r = await fetch(new URL('icons/icon-source.json', site), { cache: 'no-store', signal: AbortSignal.timeout(20000) });
       if (r.ok) live = await r.json();
     } catch { /* not published yet */ }
-    changed = !live || !!live.error || (live.logo_url || '') !== logo;
-    console.log(changed ? `Logo changed (live icons: ${live ? live.logo_url || 'default' : 'unknown'}, Settings: ${logo || 'none'}) → rebuild.`
-      : 'App icon is up to date – nothing to publish.');
+    changed = !live || !!live.error || (live.logo_url || '') !== logo || (live.splash_url || '') !== splash;
+    console.log(changed ? `Logo or splash picture changed (live: ${live ? `${live.logo_url || 'default'} / ${live.splash_url || 'no splash'}` : 'unknown'}; Settings: ${logo || 'none'} / ${splash || 'no splash'}) → rebuild.`
+      : 'App icon and start screen are up to date – nothing to publish.');
   } catch (e) {
     warn(`Could not check the logo (${e.message || e}) – nothing is changed.`);
   }

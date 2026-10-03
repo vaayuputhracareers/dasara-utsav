@@ -9,6 +9,7 @@ import { DEFAULT_TEMPLATE, TEMPLATE_TAGS, appBaseUrl, buildReceiptMessage } from
 import { Page, Field, Switch, useToast } from '../components/ui.jsx';
 import { ExportCard, DeleteCard, useDbVersion } from '../components/DataTools.jsx';
 import { REQUIRED_DB_VERSION } from '../lib/dbVersion.js';
+import { previewSplash } from '../lib/splash.js';
 
 const FIELDS = ['temple_name_te', 'temple_name_en', 'committee_name_te', 'committee_name_en', 'village_te', 'village_en',
   'address_te', 'address_en', 'contact_phone', 'logo_url', 'event_title_te', 'event_title_en', 'event_year', 'start_date',
@@ -60,7 +61,11 @@ export default function SettingsPage() {
     quick_amounts_text: (settings.quick_amounts || []).join(', '),
     purposes: Array.isArray(settings.purposes) ? settings.purposes : [],
     expense_categories: Array.isArray(settings.expense_categories) ? settings.expense_categories : [],
+    splash_url: settings.splash_url ?? '',
+    splash_seconds: settings.splash_seconds ?? 3,
   }), [settings]);
+  // Splash screen columns exist from database version 4 on; older databases keep saving everything else.
+  const hasSplash = 'splash_url' in settings;
   const [f, setF] = useState(init);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -68,6 +73,8 @@ export default function SettingsPage() {
   const [dataKey, setDataKey] = useState(0);
   const tplRef = useRef(null);
   const logoRef = useRef(null);
+  const splashRef = useRef(null);
+  const [splashBusy, setSplashBusy] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
 
@@ -104,6 +111,25 @@ export default function SettingsPage() {
     setUploading(false);
   };
 
+  const uploadSplash = async (file) => {
+    if (!file) return;
+    setSplashBusy(true);
+    try {
+      // Full-screen picture: up to 2400 px on the long side keeps it sharp on big phones, as a light JPG.
+      const blob = await compressImage(file, 2400, 0.85);
+      const type = blob.type || 'image/jpeg';
+      const path = `splash-${Date.now()}.${imageExt(type)}`;
+      const { error } = await supabase.storage.from('assets').upload(path, blob, { contentType: type, cacheControl: '31536000' });
+      if (error) throw error;
+      const { data } = supabase.storage.from('assets').getPublicUrl(path);
+      set('splash_url', data.publicUrl);
+      toast(t('splash_uploaded'), 'success');
+    } catch (e) {
+      toast(errMsg(e, t), 'error', 8000);
+    }
+    setSplashBusy(false);
+  };
+
   const submit = async () => {
     const amounts = f.quick_amounts_text.split(/[,\s]+/).map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 12);
     const clean = (arr) => arr.map((x) => ({ te: (x.te || '').trim(), en: (x.en || '').trim() })).filter((x) => x.te || x.en);
@@ -117,6 +143,10 @@ export default function SettingsPage() {
     patch.purposes = clean(f.purposes);
     patch.expense_categories = clean(f.expense_categories);
     patch.allow_self_signup = !!f.allow_self_signup;
+    if (hasSplash) {
+      patch.splash_url = (f.splash_url || '').trim();
+      patch.splash_seconds = Math.min(10, Math.max(1, parseInt(f.splash_seconds, 10) || 3));
+    }
     setBusy(true);
     try { await save(patch); toast(t('settings_saved'), 'success'); } catch (e) { toast(errMsg(e, t), 'error', 5000); }
     setBusy(false);
@@ -138,12 +168,37 @@ export default function SettingsPage() {
         <Pair label={t('address')} k="address" f={f} set={set} />
         <Field label={t('contact_phone')} optional><input className="input num" inputMode="tel" value={f.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} /></Field>
         <Field label={t('logo_label')} hint={t('logo_hint')}>
-          <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadLogo(e.target.files?.[0])} />
+          <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} data-testid="logo-file" onChange={(e) => uploadLogo(e.target.files?.[0])} />
           <div className="row">
             {f.logo_url ? <img src={f.logo_url} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--line)' }} /> : <div style={{ fontSize: 40 }}>🪔</div>}
             <button type="button" className="btn ghost sm" disabled={uploading} onClick={() => logoRef.current?.click()}>{uploading ? t('uploading_photo') : t('upload_logo')}</button>
             {f.logo_url && <button type="button" className="btn ghost danger-t sm" onClick={() => set('logo_url', '')}>{t('remove_logo')}</button>}
           </div>
+        </Field>
+      </div>
+
+      <div className="card pad-lg stack" data-testid="splash-card">
+        <div className="card-title">{t('sec_splash')}</div>
+        {!hasSplash && <div className="alert warn" data-testid="splash-db-update">{t('splash_db_update')}</div>}
+        <Field label={t('splash_label')} hint={t('splash_hint')}>
+          <input ref={splashRef} type="file" accept="image/*" style={{ display: 'none' }} data-testid="splash-file"
+            onChange={(e) => { uploadSplash(e.target.files?.[0]); e.target.value = ''; }} />
+          <div className="row" style={{ alignItems: 'flex-start' }}>
+            <div className="splash-thumb" data-testid="splash-thumb">{f.splash_url ? <img src={f.splash_url} alt="" /> : <span>📱</span>}</div>
+            <div className="stack tight">
+              <button type="button" className="btn ghost sm" disabled={!hasSplash || splashBusy} onClick={() => splashRef.current?.click()} data-testid="splash-upload">
+                {splashBusy ? t('uploading_photo') : t('upload_splash')}
+              </button>
+              {f.splash_url && <button type="button" className="btn ghost sm" onClick={() => previewSplash(f.splash_url, f.splash_seconds)} data-testid="splash-preview">{t('preview_splash')}</button>}
+              {f.splash_url && <button type="button" className="btn ghost danger-t sm" onClick={() => set('splash_url', '')} data-testid="splash-remove">{t('remove_logo')}</button>}
+            </div>
+          </div>
+        </Field>
+        <Field label={t('splash_seconds')}>
+          <select className="input" value={f.splash_seconds} disabled={!hasSplash} data-testid="splash-seconds"
+            onChange={(e) => set('splash_seconds', parseInt(e.target.value, 10))}>
+            {[...new Set([2, 3, 4, 5, Number(f.splash_seconds) || 3])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{t('seconds_n', { n })}</option>)}
+          </select>
         </Field>
       </div>
 

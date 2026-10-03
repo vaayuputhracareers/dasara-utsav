@@ -106,6 +106,10 @@ Never send the secret key or database password.)*
    - The Telugu WhatsApp receipt message (tap the tags to insert; live preview below)
    - Logo / deity photo (optional): a **square picture, 512 × 512 px** (JPG or PNG). It is shown in a circle,
      and about 30 minutes after saving it also becomes the **phone app icon**.
+   - **📱 Splash screen** (optional): a **tall picture, 1080 × 1920 px** (portrait, JPG or PNG). Every time the app is
+     opened it fills the screen from top to bottom for the chosen seconds (2–5), then the app opens; a tap skips it.
+     Phones have slightly different shapes, so a little of the edges may be cut: keep important writing away from
+     the edges. **▶️ Preview** shows it straight away. Donor receipt links and the public QR page open without it.
    - *App web address*: **leave empty**. The app detects its address by itself (`https://USERNAME.github.io/dasara-utsav` or your own subdomain).
 3. **☰ More → 👥 Members → ➕ Add member** → name, Telugu name, mobile. A random **6-digit PIN** is filled in
    (🎲 New gives another one) →
@@ -226,8 +230,15 @@ Some new features need a one-time change in Supabase. **Your data stays as it is
 - **The phone icon shows the old name or the old picture** → the icon is made from the logo in Settings about
   30 minutes after saving. Then long-press the icon → **Remove**, open the website in Chrome →
   **⋮ → Add to Home screen** again (iPhone: Safari → Share → Add to Home Screen).
-- **GitHub → Actions shows a "Publish website" run every 30 minutes** → that is the logo check. When the logo
-  did not change it stops after a few seconds; this is normal.
+- **GitHub → Actions shows a "Publish website" run every 30 minutes** → that is the logo / splash check. When
+  nothing changed it stops after a few seconds; this is normal.
+- **Android shows the app icon for a moment before the splash picture** → that is the phone's own start screen;
+  Android always shows it while an installed web app starts and it cannot be switched off. About 30 minutes after a
+  splash picture is saved, its colour is used behind that icon, so it flows into the picture. Re-add the app icon
+  (see above) to see the new colour straight away.
+- **Splash picture not showing** → it appears from the *second* time the app is opened on a phone (the first time
+  the phone only downloads it). Close the app completely and open it again. Settings shows *"needs a database
+  update"* → see *"Database update needed"* above.
 - **Logo upload says "no permission"** → the database update is missing: see *"Database update needed"* above.
 - **Wrong entry** → only the admin can cancel a receipt, and a reason is required. It stays in the records as *Cancelled*, and the donor's receipt link shows *Cancelled*.
 - **"Sign-up is closed"** → self sign-up is OFF in Settings → create the member from **Members**.

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase, isValidMobile, isPin, mobileToEmail } from '../lib/supabase.js';
 import { savePin } from '../lib/pin.js';
+import { rememberSplash } from '../lib/splash.js';
 import { useLang, LangSwitch } from '../lib/i18n.jsx';
 import { errMsg } from '../lib/errors.js';
 import { Field, Toran, useToast, MobileInput, PinInput } from '../components/ui.jsx';
@@ -11,7 +12,7 @@ function useBranding() {
   const [b, setB] = useState(null);
   useEffect(() => {
     let alive = true;
-    supabase.rpc('get_branding').then(({ data }) => alive && setB(data || {}));
+    supabase.rpc('get_branding').then(({ data }) => { rememberSplash(data); if (alive) setB(data || {}); });
     return () => { alive = false; };
   }, []);
   return b;
