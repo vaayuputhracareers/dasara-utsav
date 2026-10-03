@@ -119,6 +119,10 @@ alter table public.app_settings add column if not exists splash_seconds int not 
 alter table public.app_settings alter column splash_seconds set default 5;
 -- Added in version 5 – puja schedule on the public page (Public page → "What can visitors see?").
 alter table public.app_settings add column if not exists show_pujas boolean not null default true;
+-- Added in version 6 – "Donate" button on the public page (pays the temple UPI ID above) and the QR poster editor.
+alter table public.app_settings add column if not exists show_donate boolean not null default true;
+alter table public.app_settings add column if not exists qr_poster jsonb not null default '{}'::jsonb
+  check (jsonb_typeof(qr_poster) = 'object');
 insert into public.app_settings (id) values (1) on conflict (id) do nothing;
 
 create table if not exists public.handovers (
@@ -223,6 +227,15 @@ create table if not exists public.pujas (
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );
+
+-- Added in version 6 – Telugu names in the program and puja schedules (shown when the app / page is in Telugu).
+-- The older columns (place, details, puja_name, family_name, village, gotram) hold the English names.
+alter table public.programs add column if not exists place_te       text not null default '';
+alter table public.programs add column if not exists details_te     text not null default '';
+alter table public.pujas    add column if not exists puja_name_te   text not null default '';
+alter table public.pujas    add column if not exists family_name_te text not null default '';   -- a family in either language = reserved
+alter table public.pujas    add column if not exists village_te     text not null default '';
+alter table public.pujas    add column if not exists gotram_te      text not null default '';   -- team only, like gotram
 
 create table if not exists public.audit_log (
   id         bigint generated always as identity primary key,
@@ -689,22 +702,31 @@ begin
             'programs', s.show_programs, 'donation_total', s.show_donation_total,
             'donor_list', s.show_donor_list, 'donor_amounts', s.show_donor_amounts,
             'expense_summary', s.show_expense_summary, 'expense_details', s.show_expense_details,
-            'net_position', s.show_net_position, 'pujas', s.show_pujas));
+            'net_position', s.show_net_position, 'pujas', s.show_pujas,
+            'donate', s.show_donate and s.upi_id <> ''));
 
   if s.show_programs then
     r := r || jsonb_build_object(
       'days', coalesce((select jsonb_agg(to_jsonb(d) order by d.day_date) from public.festival_days d), '[]'::jsonb),
       'programs', coalesce((select jsonb_agg(jsonb_build_object(
           'id', p.id, 'program_date', p.program_date, 'start_time', p.start_time, 'end_time', p.end_time,
-          'title_te', p.title_te, 'title_en', p.title_en, 'place', p.place, 'details', p.details)
+          'title_te', p.title_te, 'title_en', p.title_en, 'place', p.place, 'details', p.details,
+          'place_te', p.place_te, 'details_te', p.details_te)
           order by p.program_date, p.start_time nulls last) from public.programs p), '[]'::jsonb));
   end if;
-  if s.show_pujas then   -- date, puja and family only: never mobile, gotram or note
+  if s.show_pujas then   -- date, puja, family and village only: never mobile, gotram or note
     r := r || jsonb_build_object(
       'pujas', coalesce((select jsonb_agg(jsonb_build_object(
           'id', p.id, 'puja_date', p.puja_date, 'puja_time', p.puja_time, 'puja_name', p.puja_name,
-          'family_name', p.family_name, 'village', p.village)
+          'family_name', p.family_name, 'village', p.village,
+          'puja_name_te', p.puja_name_te, 'family_name_te', p.family_name_te, 'village_te', p.village_te)
           order by p.puja_date, p.puja_time nulls last, p.created_at) from public.pujas p), '[]'::jsonb));
+  end if;
+  if s.show_donate and s.upi_id <> '' then   -- "Donate" button: pays the temple UPI ID with any UPI app
+    r := r || jsonb_build_object('donate', jsonb_build_object(
+      'upi_id', s.upi_id,
+      'payee', coalesce(nullif(s.upi_payee_name, ''), nullif(s.temple_name_en, ''), nullif(s.temple_name_te, ''), s.committee_name_en),
+      'amounts', to_jsonb(s.quick_amounts)));
   end if;
   if s.show_donation_total or s.show_net_position then
     r := r || jsonb_build_object('donations_total', v_don, 'donations_count', v_cnt);
@@ -945,8 +967,9 @@ end $$;
 -- Version of this script. The app compares it with the version it needs and tells the admin
 -- "database update needed" (= run this file again) when it is older.
 --   2 = data tools (export / delete)   3 = 6-digit PIN reset + logo upload permission   4 = splash screen
+--   5 = puja schedule   6 = "Donate" (UPI) on the public page, QR poster editor, Telugu names in the schedules
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 5 $$;
+language sql immutable set search_path = '' as $$ select 6 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts

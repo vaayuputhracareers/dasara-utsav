@@ -18,7 +18,7 @@ export function buildDays(start, end, days = [], programs = []) {
 }
 
 export default function Schedule({ start, end, days, programs, editable, onEditDay, onAddProgram, onEditProgram }) {
-  const { t, L, lang } = useLang();
+  const { t, L, P, lang } = useLang();
   const today = todayIST();
   const list = useMemo(() => buildDays(start, end, days, programs), [start, end, days, programs]);
   const [openSet, setOpenSet] = useState(() => new Set(list.filter((d) => d.date >= today).map((d) => d.date)));
@@ -46,16 +46,19 @@ export default function Schedule({ start, end, days, programs, editable, onEditD
                 {note && <div className="daynote">{note}</div>}
                 <div className="tl">
                   {d.programs.length === 0 && <div className="hint" style={{ padding: '6px 0' }}>{t('no_programs_day')}</div>}
-                  {d.programs.map((p) => (
-                    <div key={p.id} className="ti" onClick={editable ? () => onEditProgram(p) : undefined} style={editable ? { cursor: 'pointer' } : undefined}>
+                  {d.programs.map((p) => {
+                    const place = P({ te: p.place_te, en: p.place }), details = P({ te: p.details_te, en: p.details });   // Telugu / English (version 6)
+                    return (
+                    <div key={p.id} className="ti" data-testid="program" onClick={editable ? () => onEditProgram(p) : undefined} style={editable ? { cursor: 'pointer' } : undefined}>
                       <time>{fmtClock(p.start_time)}{p.end_time ? <><br /><span style={{ color: 'var(--muted)', fontWeight: 600 }}>– {fmtClock(p.end_time)}</span></> : null}</time>
                       <div className="grow">
-                        <div className="tt">{L(p, 'title')}</div>
-                        {(p.place || p.details) && <div className="ts">{p.place ? `📍 ${p.place}` : ''}{p.place && p.details ? ' · ' : ''}{p.details}</div>}
+                        <div className="tt" data-testid="program-title">{L(p, 'title')}</div>
+                        {(place || details) && <div className="ts" data-testid="program-sub">{place ? `📍 ${place}` : ''}{place && details ? ' · ' : ''}{details}</div>}
                       </div>
                       {editable && <span style={{ color: 'var(--muted)' }}>✏️</span>}
                     </div>
-                  ))}
+                    );
+                  })}
                   {editable && <button className="btn ghost xs" style={{ marginTop: 6 }} onClick={() => onAddProgram(d.date)}>{t('add_program')}</button>}
                 </div>
               </>

@@ -6,6 +6,7 @@ import { inr, inrSigned, fmtDay, num } from '../lib/format.js';
 import { Spinner, Empty } from '../components/ui.jsx';
 import Schedule from '../components/Schedule.jsx';
 import PujaSchedule from '../components/PujaSchedule.jsx';
+import DonateCard from '../components/DonateCard.jsx';
 
 const COLORS = ['#7a1d1d', '#ef7d1a', '#f6c344', '#c62828', '#16804a', '#9a3412', '#6d28d9', '#0e7490', '#a16207', '#be185d'];
 
@@ -57,6 +58,7 @@ export default function PublicPage() {
         {b.start_date && b.end_date && <span className="dates">{fmtDay(b.start_date, lang)} – {fmtDay(b.end_date, lang)}</span>}
       </header>
       <main className="page" style={{ paddingBottom: 30 }}>
+        {s.donate && data.donate?.upi_id && <DonateCard donate={data.donate} branding={b} />}
         {showTabs && (
           <div className="seg" data-testid="public-tabs">
             {tabs.includes('programs') && <button className={cur === 'programs' ? 'on' : ''} onClick={() => setTab('programs')}>📅 {t('nav_programs')}</button>}

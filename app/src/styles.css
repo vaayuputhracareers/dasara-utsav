@@ -309,3 +309,34 @@ ul.plain{margin:6px 0 0 18px;padding:0}
 .ti.puja time{min-width:54px}
 .ti.puja.free .tt{color:var(--muted)}
 .ti.puja a{color:var(--maroon);font-weight:700;text-decoration:none}
+
+/* ---- version 6: "Donate" on the public page ---- */
+.donate{border:1.5px solid var(--gold);background:linear-gradient(180deg,#fff8e6,#fff);display:flex;flex-direction:column;gap:9px;scroll-margin-top:10px}
+.donate-title{font-size:16px;font-weight:800;color:var(--maroon)}
+.donate-sub{font-size:12.5px;color:var(--muted);margin-top:-4px}
+.donate .chip{font-size:14px;padding:7px 13px}
+.donate-input{font-size:17px;font-weight:800}
+.donate-pay{font-size:15.5px;padding:14px}
+.donate-upi{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;font-size:12.5px;color:var(--muted)}
+.donate-upi > span{flex:1 1 100%;word-break:break-all}
+.donate-upi b{color:var(--ink);font-size:13px}
+.donate-qr{text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:4px}
+.donate-qr .qrimg{max-width:220px}
+.donate-payee{font-weight:800;color:var(--maroon);font-size:13.5px}
+.donate-help{font-size:11.5px}
+.donate.flash{animation:donateflash 1.6s ease 1}
+@keyframes donateflash{0%,60%{box-shadow:0 0 0 4px rgba(246,195,68,.85)}100%{box-shadow:none}}
+@media (min-width:600px){.donate-upi > span{flex:0 1 auto}}
+
+/* ---- version 6: QR poster editor ---- */
+.poster-canvas{display:block;width:100%;height:auto;aspect-ratio:1240/1754;border:1px solid var(--line);border-radius:8px;background:#fffaf2;box-shadow:var(--shadow)}
+.poster-canvas.tap{cursor:pointer}
+.poster-row{display:flex;gap:14px;align-items:flex-start}
+.poster-row > .poster-canvas{width:38%;max-width:200px;flex:0 0 auto}
+.poster-live{max-width:170px;width:46%;margin:0 auto}
+.poster-live-wrap{background:var(--cream);padding:0 0 6px}
+@media (min-height:680px){.poster-live-wrap{position:sticky;top:30px;z-index:1;box-shadow:0 8px 10px -8px rgba(86,16,16,.18)}}
+.poster-item{padding:2px 0 8px;border-bottom:1px solid var(--line)}
+.poster-item:last-child{border-bottom:0}
+.poster-item .toggle-row{border-bottom:0}
+.poster-item .input{margin-top:2px}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
-import { useLang } from '../lib/i18n.jsx';
+import { useLang, DICT } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { useAsync } from '../lib/useAsync.js';
@@ -9,7 +9,7 @@ import { errMsg } from '../lib/errors.js';
 import { dateRange, fmtDay } from '../lib/format.js';
 import { Page, Spinner, Modal, Field, useToast, Empty, MobileInput } from '../components/ui.jsx';
 import Schedule from '../components/Schedule.jsx';
-import PujaSchedule, { isMissingTable } from '../components/PujaSchedule.jsx';
+import PujaSchedule, { isMissingTable, hasFamily } from '../components/PujaSchedule.jsx';
 import { DbUpdateNotice, useDbVersion } from '../components/DbUpdate.jsx';
 
 export const SAMPLE_ALANKARAMS = [
@@ -51,6 +51,7 @@ export default function Programs() {
   }, []);
 
   const range = dateRange(settings.start_date, settings.end_date);
+  const v6 = 'show_donate' in settings;   // database version 6: Telugu names for place / details and in the puja schedule
   const hasAlank = (data?.days || []).some((d) => d.alankaram_te || d.alankaram_en);
 
   const fillSample = async () => {
@@ -80,6 +81,7 @@ export default function Programs() {
     if (!prog.title_te.trim() && !prog.title_en.trim()) return toast(t('title_required'), 'error');
     setBusy(true);
     const row = { program_date: prog.program_date, start_time: prog.start_time || null, end_time: prog.end_time || null, title_te: prog.title_te.trim(), title_en: prog.title_en.trim(), place: prog.place.trim(), details: prog.details.trim() };
+    if (v6) { row.place_te = prog.place_te.trim(); row.details_te = prog.details_te.trim(); }
     const { error } = prog.id ? await supabase.from('programs').update(row).eq('id', prog.id) : await supabase.from('programs').insert(row);
     setBusy(false);
     if (error) return toast(errMsg(error, t), 'error');
@@ -97,19 +99,21 @@ export default function Programs() {
   // ---- puja schedule (admin) ----
   const pujas = data?.pujas || [];
   const freeDays = range.filter((date) => !pujas.some((x) => x.puja_date === date));                 // no entry at all
-  const hasFamily = (x) => !!String(x.family_name || '').trim();
   const openDays = range.filter((date) => !pujas.some((x) => x.puja_date === date && hasFamily(x)));  // no family yet
   const addFestivalDays = async () => {
     setBusy(true);
-    const { error } = await supabase.from('pujas').insert(freeDays.map((date) => ({
-      puja_date: date, puja_time: null, puja_name: '', family_name: '', village: '', gotram: '', mobile: null, note: '' })));
+    const { error } = await supabase.from('pujas').insert(freeDays.map((date) => ({   // full rows (same keys in every row)
+      puja_date: date, puja_time: null, puja_name: '', family_name: '', village: '', gotram: '', mobile: null, note: '',
+      ...(v6 ? { puja_name_te: '', family_name_te: '', village_te: '', gotram_te: '' } : {}) })));
     setBusy(false);
     if (error) return toast(errMsg(error, t), 'error');
     toast(t('puja_add_days_done', { n: freeDays.length }), 'success', 6000);
     reload(true);
   };
-  const newPuja = (date) => setPuja({ puja_date: date || openDays[0] || range[0] || '', puja_time: '', puja_name: '', family_name: '', village: '', gotram: '', mobile: '', note: '' });
-  const editPuja = (x) => setPuja({ ...x, puja_time: (x.puja_time || '').slice(0, 5), mobile: x.mobile || '' });
+  const TE_KEYS = ['puja_name_te', 'family_name_te', 'village_te', 'gotram_te'];
+  const newPuja = (date) => setPuja({ puja_date: date || openDays[0] || range[0] || '', puja_time: '', puja_name: '', family_name: '', village: '', gotram: '', mobile: '', note: '',
+    ...Object.fromEntries(TE_KEYS.map((k) => [k, ''])) });
+  const editPuja = (x) => setPuja({ ...x, puja_time: (x.puja_time || '').slice(0, 5), mobile: x.mobile || '', ...Object.fromEntries(TE_KEYS.map((k) => [k, x[k] || ''])) });
   const savePuja = async () => {
     if (!puja.puja_date) return toast(t('date'), 'error');
     if (puja.mobile && puja.mobile.length !== 10) return toast(t('mobile_invalid'), 'error');
@@ -118,11 +122,13 @@ export default function Programs() {
       puja_date: puja.puja_date, puja_time: puja.puja_time || null, puja_name: puja.puja_name.trim(), family_name: puja.family_name.trim(),
       village: puja.village.trim(), gotram: puja.gotram.trim(), mobile: puja.mobile || null, note: puja.note.trim(),
     };
+    if (v6) TE_KEYS.forEach((k) => { row[k] = String(puja[k] || '').trim(); });
     // A new family on a day that still has an "Available" entry fills that entry (no "Available" left next to the family).
-    const slot = !puja.id && row.family_name ? pujas.find((x) => x.puja_date === row.puja_date && !hasFamily(x)) : null;
+    const slot = !puja.id && hasFamily(row) ? pujas.find((x) => x.puja_date === row.puja_date && !hasFamily(x)) : null;
     if (slot) {
       row.puja_time = row.puja_time || slot.puja_time || null;
       row.puja_name = row.puja_name || slot.puja_name || '';
+      if (v6) row.puja_name_te = row.puja_name_te || slot.puja_name_te || '';
     }
     const id = puja.id || slot?.id;
     const { error } = id ? await supabase.from('pujas').update(row).eq('id', id) : await supabase.from('pujas').insert(row);
@@ -141,8 +147,8 @@ export default function Programs() {
   const pujaMissing = !!data && data.pujas === null;
 
   const openDay = (d) => setDayEdit({ day_date: d.date, alankaram_te: d.day?.alankaram_te || '', alankaram_en: d.day?.alankaram_en || '', note_te: d.day?.note_te || '', note_en: d.day?.note_en || '' });
-  const newProg = (date) => setProg({ program_date: date || range[0] || '', start_time: '', end_time: '', title_te: '', title_en: '', place: '', details: '' });
-  const editProg = (p) => setProg({ ...p, start_time: (p.start_time || '').slice(0, 5), end_time: (p.end_time || '').slice(0, 5) });
+  const newProg = (date) => setProg({ program_date: date || range[0] || '', start_time: '', end_time: '', title_te: '', title_en: '', place: '', details: '', place_te: '', details_te: '' });
+  const editProg = (p) => setProg({ ...p, start_time: (p.start_time || '').slice(0, 5), end_time: (p.end_time || '').slice(0, 5), place: p.place || '', details: p.details || '', place_te: p.place_te || '', details_te: p.details_te || '' });
 
   return (
     <Page title={tab === 'puja' ? t('nav_puja') : t('nav_programs')} sub={`${L(settings, 'event_title')} ${settings.event_year}`}
@@ -194,22 +200,56 @@ export default function Programs() {
                 </select>
               ) : <input type="date" className="input" value={puja.puja_date} onChange={(e) => setPuja({ ...puja, puja_date: e.target.value })} data-testid="puja-date" />}
             </Field>
-            <Field label={t('family_name')} hint={t('family_hint')}>
-              <input className="input" value={puja.family_name} placeholder={t('family_name_ph')} onChange={(e) => setPuja({ ...puja, family_name: e.target.value })} data-testid="puja-family-input" />
-            </Field>
-            <div className="grid2">
-              <Field label={t('puja_name')} optional>
-                <input className="input" value={puja.puja_name} placeholder={t('puja_name_ph')} onChange={(e) => setPuja({ ...puja, puja_name: e.target.value })} data-testid="puja-name-input" />
-              </Field>
-              <Field label={t('time')} optional><input type="time" className="input" value={puja.puja_time} onChange={(e) => setPuja({ ...puja, puja_time: e.target.value })} data-testid="puja-time" /></Field>
-            </div>
-            <Field label={t('village')} optional><input className="input" value={puja.village} onChange={(e) => setPuja({ ...puja, village: e.target.value })} data-testid="puja-village" /></Field>
-            <div className="grid2">
-              <Field label={t('gotram')} optional><input className="input" value={puja.gotram} onChange={(e) => setPuja({ ...puja, gotram: e.target.value })} data-testid="puja-gotram" /></Field>
-              <Field label={t('mobile')} optional><MobileInput className="input num" value={puja.mobile} onChange={(v) => setPuja({ ...puja, mobile: v })} autoComplete="off" data-testid="puja-mobile-input" /></Field>
-            </div>
+            {v6 ? (
+              <>
+                <Field label={t('family_te')}>
+                  <input className="input" value={puja.family_name_te} placeholder={DICT.family_name_ph[0]} onChange={(e) => setPuja({ ...puja, family_name_te: e.target.value })} data-testid="puja-family-te" />
+                </Field>
+                <Field label={t('family_en')} hint={t('family_hint')}>
+                  <input className="input" value={puja.family_name} placeholder={DICT.family_name_ph[1]} onChange={(e) => setPuja({ ...puja, family_name: e.target.value })} data-testid="puja-family-input" />
+                </Field>
+                <div className="grid2">
+                  <Field label={t('puja_name_te_l')} optional>
+                    <input className="input" value={puja.puja_name_te} placeholder={DICT.puja_name_ph[0]} onChange={(e) => setPuja({ ...puja, puja_name_te: e.target.value })} data-testid="puja-name-te" />
+                  </Field>
+                  <Field label={t('puja_name_en_l')} optional>
+                    <input className="input" value={puja.puja_name} placeholder={DICT.puja_name_ph[1]} onChange={(e) => setPuja({ ...puja, puja_name: e.target.value })} data-testid="puja-name-input" />
+                  </Field>
+                </div>
+                <div className="grid2">
+                  <Field label={t('village_te_l')} optional><input className="input" value={puja.village_te} onChange={(e) => setPuja({ ...puja, village_te: e.target.value })} data-testid="puja-village-te" /></Field>
+                  <Field label={t('village_en_l')} optional><input className="input" value={puja.village} onChange={(e) => setPuja({ ...puja, village: e.target.value })} data-testid="puja-village" /></Field>
+                </div>
+                <div className="grid2">
+                  <Field label={t('gotram_te_l')} optional><input className="input" value={puja.gotram_te} onChange={(e) => setPuja({ ...puja, gotram_te: e.target.value })} data-testid="puja-gotram-te" /></Field>
+                  <Field label={t('gotram_en_l')} optional><input className="input" value={puja.gotram} onChange={(e) => setPuja({ ...puja, gotram: e.target.value })} data-testid="puja-gotram" /></Field>
+                </div>
+                <div className="grid2">
+                  <Field label={t('time')} optional><input type="time" className="input" value={puja.puja_time} onChange={(e) => setPuja({ ...puja, puja_time: e.target.value })} data-testid="puja-time" /></Field>
+                  <Field label={t('mobile')} optional><MobileInput className="input num" value={puja.mobile} onChange={(v) => setPuja({ ...puja, mobile: v })} autoComplete="off" data-testid="puja-mobile-input" /></Field>
+                </div>
+              </>
+            ) : (
+              <>
+                <Field label={t('family_name')} hint={t('family_hint')}>
+                  <input className="input" value={puja.family_name} placeholder={t('family_name_ph')} onChange={(e) => setPuja({ ...puja, family_name: e.target.value })} data-testid="puja-family-input" />
+                </Field>
+                <div className="grid2">
+                  <Field label={t('puja_name')} optional>
+                    <input className="input" value={puja.puja_name} placeholder={t('puja_name_ph')} onChange={(e) => setPuja({ ...puja, puja_name: e.target.value })} data-testid="puja-name-input" />
+                  </Field>
+                  <Field label={t('time')} optional><input type="time" className="input" value={puja.puja_time} onChange={(e) => setPuja({ ...puja, puja_time: e.target.value })} data-testid="puja-time" /></Field>
+                </div>
+                <Field label={t('village')} optional><input className="input" value={puja.village} onChange={(e) => setPuja({ ...puja, village: e.target.value })} data-testid="puja-village" /></Field>
+                <div className="grid2">
+                  <Field label={t('gotram')} optional><input className="input" value={puja.gotram} onChange={(e) => setPuja({ ...puja, gotram: e.target.value })} data-testid="puja-gotram" /></Field>
+                  <Field label={t('mobile')} optional><MobileInput className="input num" value={puja.mobile} onChange={(v) => setPuja({ ...puja, mobile: v })} autoComplete="off" data-testid="puja-mobile-input" /></Field>
+                </div>
+              </>
+            )}
             <Field label={t('note')} optional><input className="input" value={puja.note} onChange={(e) => setPuja({ ...puja, note: e.target.value })} data-testid="puja-note-input" /></Field>
             <p className="hint">🔒 {t('puja_private_hint')}</p>
+            <p className="hint" data-testid="te-names-hint">{v6 ? `🌐 ${t('te_names_hint')}` : `🛠️ ${t('te_names_needs_db')}`}</p>
             <div className="grid2">
               {puja.id ? <button className="btn ghost danger-t" disabled={busy} onClick={delPuja} data-testid="puja-delete">🗑️ {t('delete')}</button> : <span />}
               <button className="btn primary" disabled={busy} onClick={savePuja} data-testid="puja-save">{busy ? t('saving') : t('save')}</button>
@@ -232,7 +272,7 @@ export default function Programs() {
 
       <Modal open={!!prog} onClose={() => setProg(null)} title={prog?.id ? t('edit_program') : t('new_program')}>
         {prog && (
-          <div className="stack">
+          <div className="stack" data-testid="prog-form">
             <Field label={t('date')}>
               {range.length ? (
                 <select className="input" value={prog.program_date} onChange={(e) => setProg({ ...prog, program_date: e.target.value })}>
@@ -246,13 +286,27 @@ export default function Programs() {
               <Field label={t('start_time')}><input type="time" className="input" value={prog.start_time} onChange={(e) => setProg({ ...prog, start_time: e.target.value })} /></Field>
               <Field label={t('end_time')} optional><input type="time" className="input" value={prog.end_time} onChange={(e) => setProg({ ...prog, end_time: e.target.value })} /></Field>
             </div>
-            <Field label={t('program_title_te')}><input className="input" value={prog.title_te} onChange={(e) => setProg({ ...prog, title_te: e.target.value })} /></Field>
-            <Field label={t('program_title_en')}><input className="input" value={prog.title_en} onChange={(e) => setProg({ ...prog, title_en: e.target.value })} /></Field>
-            <Field label={t('place')} optional><input className="input" value={prog.place} onChange={(e) => setProg({ ...prog, place: e.target.value })} /></Field>
-            <Field label={t('program_details')} optional><textarea className="input" value={prog.details} onChange={(e) => setProg({ ...prog, details: e.target.value })} /></Field>
+            <Field label={t('program_title_te')}><input className="input" value={prog.title_te} onChange={(e) => setProg({ ...prog, title_te: e.target.value })} data-testid="prog-title-te" /></Field>
+            <Field label={t('program_title_en')}><input className="input" value={prog.title_en} onChange={(e) => setProg({ ...prog, title_en: e.target.value })} data-testid="prog-title-en" /></Field>
+            {v6 ? (
+              <>
+                <div className="grid2">
+                  <Field label={t('place_te')} optional><input className="input" value={prog.place_te} onChange={(e) => setProg({ ...prog, place_te: e.target.value })} data-testid="prog-place-te" /></Field>
+                  <Field label={t('place_en')} optional><input className="input" value={prog.place} onChange={(e) => setProg({ ...prog, place: e.target.value })} data-testid="prog-place" /></Field>
+                </div>
+                <Field label={t('details_te')} optional><textarea className="input" value={prog.details_te} onChange={(e) => setProg({ ...prog, details_te: e.target.value })} data-testid="prog-details-te" /></Field>
+                <Field label={t('details_en')} optional><textarea className="input" value={prog.details} onChange={(e) => setProg({ ...prog, details: e.target.value })} data-testid="prog-details" /></Field>
+              </>
+            ) : (
+              <>
+                <Field label={t('place')} optional><input className="input" value={prog.place} onChange={(e) => setProg({ ...prog, place: e.target.value })} data-testid="prog-place" /></Field>
+                <Field label={t('program_details')} optional><textarea className="input" value={prog.details} onChange={(e) => setProg({ ...prog, details: e.target.value })} data-testid="prog-details" /></Field>
+              </>
+            )}
+            <p className="hint" data-testid="te-names-hint">{v6 ? `🌐 ${t('te_names_hint')}` : `🛠️ ${t('te_names_needs_db')}`}</p>
             <div className="grid2">
               {prog.id ? <button className="btn ghost danger-t" disabled={busy} onClick={delProg}>🗑️ {t('delete')}</button> : <span />}
-              <button className="btn primary" disabled={busy} onClick={saveProg}>{busy ? t('saving') : t('save')}</button>
+              <button className="btn primary" disabled={busy} onClick={saveProg} data-testid="prog-save">{busy ? t('saving') : t('save')}</button>
             </div>
           </div>
         )}

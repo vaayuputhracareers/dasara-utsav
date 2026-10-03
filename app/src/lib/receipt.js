@@ -71,8 +71,18 @@ export function buildReceiptMessage(settings, d, collectorName) {
 export const waLink = (mobile, text) => `https://wa.me/91${mobile}?text=${encodeURIComponent(text)}`;
 export const smsLink = (mobile, text) => `sms:+91${mobile}?body=${encodeURIComponent(text)}`;
 
+/** The temple's UPI ID: name@bank (letters, digits, dot, dash, underscore before the @). */
+export const UPI_ID_RE = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
+
+/** Note on public-page donations ("Dasara Sharannavaratri Mahotsavalu 2026 donation") – English letters only, as some UPI apps refuse others. */
+export function donateNote(b) {
+  const ascii = (v) => String(v || '').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim();
+  return `${ascii(b?.event_title_en)} ${b?.event_year || ''} donation`.replace(/\s+/g, ' ').trim().slice(0, 50);
+}
+
 export function upiLink({ upiId, payee, amount, note }) {
-  const parts = [`pa=${encodeURIComponent(upiId)}`, `pn=${encodeURIComponent(payee || '')}`, 'cu=INR'];
+  // '@' stays as it is (standard UPI QR codes have it plain; some UPI apps don't decode %40)
+  const parts = [`pa=${encodeURIComponent(String(upiId || '').trim()).replace(/%40/gi, '@')}`, `pn=${encodeURIComponent(payee || '')}`, 'cu=INR'];
   if (Number(amount) > 0) parts.push(`am=${Number(amount).toFixed(2)}`);
   if (note) parts.push(`tn=${encodeURIComponent(note.slice(0, 60))}`);
   return `upi://pay?${parts.join('&')}`;

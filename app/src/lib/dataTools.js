@@ -218,17 +218,21 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
 
   const programRows = programs.map((p) => ({
     Date: dayCell(p.program_date), Day: weekday(p.program_date), Start: clock(p.start_time), End: clock(p.end_time),
-    'Program (Telugu)': p.title_te || '', 'Program (English)': p.title_en || '', Place: p.place || '', Details: p.details || '',
+    'Program (Telugu)': p.title_te || '', 'Program (English)': p.title_en || '',
+    'Place (Telugu)': p.place_te || '', 'Place (English)': p.place || '', 'Details (Telugu)': p.details_te || '', 'Details (English)': p.details || '',
   }));
   const dayInfoRows = days.map((d) => ({
     Date: dayCell(d.day_date), Day: weekday(d.day_date), 'Alankaram (Telugu)': d.alankaram_te || '', 'Alankaram (English)': d.alankaram_en || '',
     'Note (Telugu)': d.note_te || '', 'Note (English)': d.note_en || '',
   }));
 
-  const pujaRows = pujas.map((p) => ({
-    Date: dayCell(p.puja_date), Day: weekday(p.puja_date), Time: clock(p.puja_time), Puja: p.puja_name || '',
-    Family: p.family_name || '', Status: String(p.family_name || '').trim() ? 'Reserved' : 'Available',
-    Village: p.village || '', Gotram: p.gotram || '', Mobile: p.mobile || '', Note: p.note || '',
+  const pujaRows = pujas.map((p) => ({   // Telugu columns: database version 6 (empty before)
+    Date: dayCell(p.puja_date), Day: weekday(p.puja_date), Time: clock(p.puja_time),
+    'Puja (Telugu)': p.puja_name_te || '', 'Puja (English)': p.puja_name || '',
+    'Family (Telugu)': p.family_name_te || '', 'Family (English)': p.family_name || '',
+    Status: String(p.family_name || '').trim() || String(p.family_name_te || '').trim() ? 'Reserved' : 'Available',
+    'Village (Telugu)': p.village_te || '', 'Village (English)': p.village || '',
+    'Gotram (Telugu)': p.gotram_te || '', 'Gotram (English)': p.gotram || '', Mobile: p.mobile || '', Note: p.note || '',
   }));
 
   const cats = new Map();

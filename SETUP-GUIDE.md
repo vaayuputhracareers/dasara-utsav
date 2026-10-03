@@ -119,12 +119,21 @@ Never send the secret key or database password.)*
    **Send login details on WhatsApp**. Repeat for each team member.
    (You can also let members sign up themselves. They wait for your approval.)
 4. **☰ More → 📅 Programs** → *Fill sample Navaratri alankaram list* → edit each day → add programs with timings.
+   Name, place and details have a **Telugu** and an **English** box: each shows in the language the app or page is in
+   (fill only one and it shows in both).
    **☰ More → 🪔 Puja schedule** (or the **🪔 Puja schedule** tab on the Programs page) → *📅 Add all festival days*
    → tap a day → write the **family doing the puja** (and if you like: puja name, time, village, gotram, mobile,
-   note) → **Save**. A day without a family shows **Available**. Mobile, gotram and note are seen only by the team.
+   note) → **Save**. Family, puja name, village and gotram have Telugu and English boxes. A day without a family shows **Available**. Mobile, gotram and note are seen only by the team.
    Every team member sees the puja schedule; visitors see it on the public page when *🪔 Puja schedule* is ON there.
-5. **☰ More → 📱 Public page & QR** → switch ON the sections visitors may see →
-   turn the page **ON** → **Download QR poster** → print it and keep it at the temple.
+5. **☰ More → 📱 Public page & QR** → switch ON the sections visitors may see → turn the page **ON**.
+   - **🙏 Donation link (UPI)**: enter the temple **UPI ID** (printed under the temple's UPI QR; looks like
+     name@bank), the name shown in the payment app and the amount buttons → **Save**, and keep
+     *Show the "Donate" section* ON. Visitors then see **🙏 Donate to the temple** at the top of the page: one tap
+     opens GPay / PhonePe / Paytm with the temple UPI ID filled in, and the money goes straight to the temple account.
+     **📲 Test on this phone** opens your own UPI app (just close it). Share the **donation link** (`…#donate`) in
+     WhatsApp groups.
+   - **🖼️ QR poster → ✏️ Edit poster**: switch off the lines you don't want and change the words (the picture
+     changes at once) → **Save** → **⬇️ Download poster** → print it and keep it at the temple.
 6. On every phone: open the link in **Chrome → ⋮ → Add to Home screen** so it opens like an app (the icon is called **Dasara**).
 
 The app opens in **English**. Tap **తెలుగు** at the top to switch; each phone remembers its choice. WhatsApp receipts
@@ -247,6 +256,16 @@ Some new features need a one-time change in Supabase. **Your data stays as it is
   completely (swipe it away from the recent apps) and open it again. Settings shows *"needs a database update"* →
   see *"Database update needed"* above.
 - **Logo upload says "no permission"** → the database update is missing: see *"Database update needed"* above.
+- **Donate: the UPI app opens but the payment fails** (*"exceeded bank limit"*, *"for security reasons"*) → some UPI
+  apps stop payments that come from a link to a *personal* UPI ID. Use the temple's **business (merchant) UPI ID** if
+  it has one (bank, PhonePe Business, Paytm Business or GPay Business). Visitors can always pay with **Copy** (the UPI
+  ID) or the **QR** shown under the button.
+- **Donate: nothing opens on an iPhone or a laptop** → iPhones open only one UPI app (or none) and laptops have none:
+  use **Copy** or scan the **QR** (laptops show it straight away).
+- **Donations made on the public page** go straight to the temple account; the app cannot see them. When the bank or
+  UPI app shows one, enter it as a donation (payment **UPI**) so the donor gets a receipt.
+- **No "Donate" section / "Edit poster" cannot save / no Telugu boxes** → the database update (version 6) is
+  missing: see *"Database update needed"* above.
 - **Wrong entry** → only the admin can cancel a receipt, and a reason is required. It stays in the records as *Cancelled*, and the donor's receipt link shows *Cancelled*.
 - **"Sign-up is closed"** → self sign-up is OFF in Settings → create the member from **Members**.
 - **Message about "Confirm email"** → repeat Part A, step 4.
