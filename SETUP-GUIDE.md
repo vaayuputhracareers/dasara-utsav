@@ -104,7 +104,8 @@ Never send the secret key or database password.)*
    - Temple UPI ID + account name, quick amounts (116, 516, 1116 …)
    - Donation purposes, expense categories
    - The Telugu WhatsApp receipt message (tap the tags to insert; live preview below)
-   - Logo / deity photo (optional): a **square picture, 512 × 512 px** (JPG or PNG). It is shown in a circle.
+   - Logo / deity photo (optional): a **square picture, 512 × 512 px** (JPG or PNG). It is shown in a circle,
+     and about 30 minutes after saving it also becomes the **phone app icon**.
    - *App web address*: **leave empty**. The app detects its address by itself (`https://USERNAME.github.io/dasara-utsav` or your own subdomain).
 3. **☰ More → 👥 Members → ➕ Add member** → name, Telugu name, mobile. A random **6-digit PIN** is filled in
    (🎲 New gives another one) →
@@ -183,10 +184,9 @@ add the TXT record that GitHub shows to Cloudflare DNS → **Verify**. This stop
 Everybody logs in with **mobile number + 6-digit PIN**.
 
 - Accounts made before the switch to PINs: the next time the app opens, it asks once
-  **"Set your 6-digit PIN"**. After that the old password no longer works.
-- Logged out and only remember the old password? On the login screen tap **"Still have an old password? Log in with it"**,
-  log in once, then set the PIN.
-- The admin can always give a member a new PIN: **Members → tap the member → 🔢 Reset PIN → send on WhatsApp**.
+  **"Set your PIN (6 digits)"**. After that the old password no longer works.
+- Someone cannot log in (forgot the PIN, or still has an old password)? The admin gives a new PIN:
+  **Members → tap the member → 🔢 Reset PIN → send on WhatsApp**.
 - To change your own PIN: **👤 Me → 🔢 Change PIN**.
 
 ## 🛠️ When the app says "Database update needed"
@@ -223,8 +223,11 @@ Some new features need a one-time change in Supabase. **Your data stays as it is
   ```
 - **"Supabase did not accept this PIN"** → Supabase → **Authentication → Sign In / Providers → Email**:
   *Minimum password length* **6** and *Password requirements* **none** (these are the normal settings).
-- **The phone icon still says "Utsav"** → long-press the icon → **Remove**, then open the website in Chrome →
+- **The phone icon shows the old name or the old picture** → the icon is made from the logo in Settings about
+  30 minutes after saving. Then long-press the icon → **Remove**, open the website in Chrome →
   **⋮ → Add to Home screen** again (iPhone: Safari → Share → Add to Home Screen).
+- **GitHub → Actions shows a "Publish website" run every 30 minutes** → that is the logo check. When the logo
+  did not change it stops after a few seconds; this is normal.
 - **Logo upload says "no permission"** → the database update is missing: see *"Database update needed"* above.
 - **Wrong entry** → only the admin can cancel a receipt, and a reason is required. It stays in the records as *Cancelled*, and the donor's receipt link shows *Cancelled*.
 - **"Sign-up is closed"** → self sign-up is OFF in Settings → create the member from **Members**.

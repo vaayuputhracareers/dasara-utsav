@@ -59,7 +59,7 @@ export default function Me() {
       )}
       <div className="card pad-lg stack">
         <div className="card-title" style={{ marginBottom: 0 }}>{t('change_pin')}</div>
-        <Field label={t('new_pin')} hint={t('pin_hint')}><PinInput value={p1} onChange={setP1} autoComplete="new-password" data-testid="me-pin-1" /></Field>
+        <Field label={t('new_pin')}><PinInput value={p1} onChange={setP1} autoComplete="new-password" data-testid="me-pin-1" /></Field>
         <Field label={t('confirm_pin')}><PinInput value={p2} onChange={setP2} autoComplete="new-password" data-testid="me-pin-2" /></Field>
         <button className="btn ghost block" disabled={busy} onClick={change} data-testid="me-pin-save">{busy ? t('saving') : t('change_pin')}</button>
       </div>

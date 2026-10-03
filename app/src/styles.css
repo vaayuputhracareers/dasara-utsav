@@ -290,10 +290,13 @@ ul.plain{margin:6px 0 0 18px;padding:0}
 .db-update{flex-direction:column;align-items:stretch;gap:6px}
 .db-update ol{margin:0 0 0 18px;padding:0;font-weight:600;line-height:1.5}
 
-/* 6-digit PIN boxes */
+/* PIN boxes: digits like the mobile number box, 👁️ button on the right */
 .pin-wrap{position:relative}
-.input.pin{font-family:system-ui,Arial,sans-serif;font-size:22px;font-weight:800;letter-spacing:.5em;text-align:center;padding-right:46px;padding-left:46px}
+.input.pin{font-family:system-ui,Arial,sans-serif;font-size:20px;font-weight:800;letter-spacing:.3em;padding-right:48px}
 .input.pin::placeholder{letter-spacing:normal}
 .pin-eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:19px;padding:8px;cursor:pointer;line-height:1}
 .input.pin-plain{font-size:20px;letter-spacing:.25em}
-.btn.link.small-link{font-size:12.5px;font-weight:600;align-self:center;color:var(--muted)}
+/* Log in / Create account / Set PIN: every box exactly the same size */
+.auth .input{height:52px;min-height:52px;padding:0 14px;font-size:17px}
+.auth .input.big,.auth .input.pin{font-family:system-ui,Arial,sans-serif;font-size:20px;font-weight:800}
+.auth .input.pin{padding-right:48px}

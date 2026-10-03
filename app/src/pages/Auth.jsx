@@ -34,22 +34,18 @@ export function Login() {
   const b = useBranding();
   const [mobile, setMobile] = useState('');
   const [pin, setPin] = useState('');
-  const [legacy, setLegacy] = useState(false); // log in once with an old password, then choose a PIN
-  const [oldPassword, setOldPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const submit = async (e) => {
     e.preventDefault();
     setErr('');
     if (!isValidMobile(mobile)) { setErr(t('mobile_invalid')); return; }
-    if (!legacy && !isPin(pin)) { setErr(t('pin_invalid')); return; }
-    if (legacy && !oldPassword) { setErr(t('required') + ': ' + t('old_password')); return; }
+    if (!isPin(pin)) { setErr(t('pin_invalid')); return; }
     setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: mobileToEmail(mobile), password: legacy ? oldPassword : pin });
+    const { error } = await supabase.auth.signInWithPassword({ email: mobileToEmail(mobile), password: pin });
     setBusy(false);
     if (error) setErr(errMsg(error, t));
   };
-  const switchMode = () => { setLegacy((x) => !x); setErr(''); setPin(''); setOldPassword(''); };
   return (
     <div className="auth">
       <Toran />
@@ -60,21 +56,11 @@ export function Login() {
           <Field label={t('mobile')}>
             <MobileInput value={mobile} onChange={setMobile} autoComplete="username" data-testid="login-mobile" />
           </Field>
-          {legacy ? (
-            <Field label={t('old_password')} hint={t('old_password_hint')}>
-              <input className="input" type="password" autoComplete="current-password" value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)} data-testid="login-old-password" />
-            </Field>
-          ) : (
-            <Field label={t('pin')}>
-              <PinInput value={pin} onChange={setPin} data-testid="login-pin" />
-            </Field>
-          )}
+          <Field label={t('pin')}>
+            <PinInput value={pin} onChange={setPin} data-testid="login-pin" />
+          </Field>
           {err && <div className="alert err">{err}</div>}
           <button className="btn primary block" disabled={busy}>{busy ? t('logging_in') : t('login_btn')}</button>
-          <button type="button" className="btn link small-link" onClick={switchMode} data-testid="login-mode">
-            {legacy ? t('use_pin_link') : t('old_password_link')}
-          </button>
           {b?.allow_self_signup !== false && (
             <p className="foot-note">{t('no_account')} <Link to="/signup" className="btn link">{t('create_account')}</Link></p>
           )}
@@ -128,7 +114,7 @@ export function Signup() {
           <Field label={t('full_name')}><input className="input" value={f.full_name} onChange={set('full_name')} autoComplete="name" /></Field>
           <Field label={t('name_te_label')} optional><input className="input" value={f.name_te} onChange={set('name_te')} /></Field>
           <Field label={t('mobile')}><MobileInput value={f.mobile} onChange={setV('mobile')} autoComplete="username" data-testid="signup-mobile" /></Field>
-          <Field label={t('pin')} hint={t('pin_hint')}><PinInput value={f.pin} onChange={setV('pin')} autoComplete="new-password" data-testid="signup-pin" /></Field>
+          <Field label={t('pin')}><PinInput value={f.pin} onChange={setV('pin')} autoComplete="new-password" data-testid="signup-pin" /></Field>
           <Field label={t('confirm_pin')}><PinInput value={f.pin2} onChange={setV('pin2')} autoComplete="new-password" data-testid="signup-pin2" /></Field>
           {err && <div className="alert err">{err}</div>}
           <button className="btn primary block" disabled={busy}>{busy ? t('saving') : t('signup_btn')}</button>
@@ -170,7 +156,7 @@ export function SetPin() {
           <h2 style={{ color: 'var(--maroon)', fontSize: 18, textAlign: 'center' }}>{t('set_pin_title')}</h2>
           <p style={{ color: 'var(--muted)', fontSize: 14, textAlign: 'center' }}>{t('set_pin_text')}</p>
           {profile && <p className="num" style={{ fontWeight: 700, textAlign: 'center' }}>{profile.full_name} · {profile.mobile}</p>}
-          <Field label={t('new_pin')} hint={t('pin_hint')}><PinInput value={p1} onChange={setP1} autoComplete="new-password" data-testid="set-pin-1" /></Field>
+          <Field label={t('new_pin')}><PinInput value={p1} onChange={setP1} autoComplete="new-password" data-testid="set-pin-1" /></Field>
           <Field label={t('confirm_pin')}><PinInput value={p2} onChange={setP2} autoComplete="new-password" data-testid="set-pin-2" /></Field>
           {err && <div className="alert err">{err}</div>}
           <button className="btn primary block" disabled={busy}>{busy ? t('saving') : t('set_pin_btn')}</button>

@@ -1,12 +1,16 @@
 # Builds the app and publishes it on GitHub Pages.
 # Runs automatically whenever something is saved (committed) to the main branch,
 # e.g. after you edit config.js. You can also start it by hand: Actions → "Publish website" → Run workflow.
+# Every 30 minutes it also checks the logo in the app's Settings: when it changed, the website is
+# rebuilt so the phone app icon shows the new logo. Checks that find no change stop after a few seconds.
 name: Publish website
 
 on:
   push:
     branches: [main, master]
   workflow_dispatch:
+  schedule:
+    - cron: '7,37 * * * *'
 
 permissions:
   contents: read
@@ -21,6 +25,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.go.outputs.publish }}
     steps:
       - name: Get the code
         uses: actions/checkout@v7
@@ -37,11 +43,22 @@ jobs:
         id: pages
         uses: actions/configure-pages@v6
 
+      - name: New logo in Settings? (30-minute check only)
+        id: logo
+        if: github.event_name == 'schedule'
+        run: node app/scripts/app-icons.mjs --check --site "${{ steps.pages.outputs.base_url }}" --config config.js
+
+      - name: Publish this time?
+        id: go
+        run: echo "publish=${{ github.event_name != 'schedule' || steps.logo.outputs.changed == 'true' }}" >> "$GITHUB_OUTPUT"
+
       - name: Install
+        if: steps.go.outputs.publish == 'true'
         working-directory: app
         run: npm ci --no-audit --no-fund
 
       - name: Build
+        if: steps.go.outputs.publish == 'true'
         working-directory: app
         env:
           # "/dasara-utsav" for https://<user>.github.io/dasara-utsav/ , empty for a custom domain
@@ -49,15 +66,23 @@ jobs:
         run: npx vite build
 
       - name: Add config.js
+        if: steps.go.outputs.publish == 'true'
         run: cp config.js app/dist/config.js
 
+      - name: App icon from the logo in Settings
+        if: steps.go.outputs.publish == 'true'
+        working-directory: app
+        run: node scripts/app-icons.mjs --dist dist --config ../config.js
+
       - name: Upload the website
+        if: steps.go.outputs.publish == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: app/dist
 
   deploy:
     needs: build
+    if: needs.build.outputs.publish == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

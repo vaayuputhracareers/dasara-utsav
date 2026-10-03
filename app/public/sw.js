@@ -1,6 +1,6 @@
 /* Light offline cache for the app shell. Supabase data is never cached.
    Works at any address: https://site.netlify.app/ or https://name.github.io/dasara-utsav/ */
-const CACHE = 'dasara-v3';
+const CACHE = 'dasara-v4';
 const BASE = new URL('./', self.location).pathname; // "/" or "/dasara-utsav/"
 const INDEX = BASE + 'index.html';
 const SHELL = [BASE, INDEX, BASE + 'manifest.webmanifest', BASE + 'icons/icon-192.png'];
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (e) => {
     }).catch(() => caches.match(INDEX)));
     return;
   }
-  if (url.pathname.startsWith(BASE + 'assets/') || url.pathname.startsWith(BASE + 'icons/')) {
+  if (url.pathname.startsWith(BASE + 'assets/')) {
     // File names in /assets change on every build, so these are safe to keep.
     e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((res) => {
       if (res.ok) {
@@ -47,11 +47,15 @@ self.addEventListener('fetch', (e) => {
     })));
     return;
   }
-  // config.js (Supabase details) and the rest: network first, last good copy when offline.
+  // config.js (Supabase details), icons (made from the logo, can change) and the rest:
+  // network first, last good copy when offline.
   e.respondWith(fetch(req).then((res) => {
     if (res.ok && url.pathname === BASE + 'config.js') {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(BASE + 'config.js', copy));
+    } else if (res.ok && url.pathname.startsWith(BASE + 'icons/')) {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(url.pathname, copy));
     }
     return res;
   }).catch(() => caches.match(req, { ignoreSearch: true }).then((hit) => hit || Response.error())));
