@@ -7,7 +7,7 @@ import { useLang } from '../lib/i18n.jsx';
 import { useAsync } from '../lib/useAsync.js';
 import { errMsg } from '../lib/errors.js';
 import { inr, inrSigned, fmtDay, todayIST, personName } from '../lib/format.js';
-import { TRANSFER_SELECT, hasCashBank, transferEffect } from '../lib/cashbank.js';
+import { TRANSFER_SELECT, hasCashBank, hasOpening, openingOf, netOf, OPENING_KINDS, KIND_KEY, transferEffect } from '../lib/cashbank.js';
 import { Page, Spinner, Empty, Field, Seg, Modal, useToast } from '../components/ui.jsx';
 import { DbUpdateNotice, useDbVersion } from '../components/DbUpdate.jsx';
 
@@ -25,14 +25,16 @@ export default function CashBank() {
   const { t, lang } = useLang();
   const [dbVersion, checkDb] = useDbVersion();
   const [modal, setModal] = useState(null);   // { kind, edit?, key }
+  const [openingModal, setOpeningModal] = useState(false);
   const { data, loading, error, reload } = useAsync(async () => {
-    const [dash, list] = await Promise.all([
+    const [dash, list, open] = await Promise.all([
       supabase.rpc('get_dashboard'),
-      supabase.from('cash_transfers').select(TRANSFER_SELECT)
+      supabase.from('cash_transfers').select(TRANSFER_SELECT).in('kind', ['deposit', 'withdrawal'])
         .order('transfer_date', { ascending: false }).order('created_at', { ascending: false }).limit(500),
+      supabase.from('cash_transfers').select(TRANSFER_SELECT).in('kind', OPENING_KINDS),
     ]);
     if (dash.error) throw dash.error;
-    return { d: dash.data, list: list.data || [], ready: hasCashBank(dash.data) && !list.error };
+    return { d: dash.data, list: list.data || [], openings: open.data || [], ready: hasCashBank(dash.data) && !list.error };
   }, []);
 
   useEffect(() => {
@@ -43,7 +45,9 @@ export default function CashBank() {
 
   const d = data?.d;
   const owed = n(d?.owed_to_members);
-  const net = d ? n(d.donations_total) - n(d.expenses_total) : 0;
+  const net = netOf(d);
+  const opening = openingOf(d);
+  const openingDate = data?.openings?.[0]?.transfer_date;
 
   return (
     <Page title={t('cb_title')} back wide>
@@ -62,6 +66,22 @@ export default function CashBank() {
             </div>
           </div>
 
+          {hasOpening(d) ? (
+            <div className="card" data-testid="cb-opening">
+              <div className="card-title">{t('opening_title')}
+                <button type="button" className="btn ghost xs" data-testid="opening-edit" onClick={() => setOpeningModal(true)}>
+                  {opening > 0 ? `✏️ ${t('edit')}` : `➕ ${t('opening_set')}`}</button>
+              </div>
+              {opening > 0 ? (
+                <div className="cb-where">
+                  <div><small>{t('cash_in_hand')}</small><b className="num" data-testid="opening-cash">{inr(d.opening_cash)}</b></div>
+                  <div><small>{t('cash_at_bank')}</small><b className="num" data-testid="opening-bank">{inr(d.opening_bank)}</b></div>
+                </div>
+              ) : <p className="hint">{t('opening_none')}</p>}
+              {opening > 0 && openingDate && <p className="hint" style={{ marginTop: 6 }}>{t('opening_as_on', { date: fmtDay(openingDate, lang, true) })}</p>}
+            </div>
+          ) : <div className="alert info">{t('cb_needs_db_opening')}</div>}
+
           <div className="cols2">
             <div className="card cb-card" data-testid="cb-cash">
               <div className="cb-head"><span>{t('cash_in_hand')}</span><b className="num" data-testid="cb-cash-total">{inr(d.cash_in_hand)}</b></div>
@@ -71,6 +91,7 @@ export default function CashBank() {
               </div>
               <div className="cb-calc">
                 <div className="lbl">{t('cb_how_calc')}</div>
+                {n(d.opening_cash) > 0 && <Line sign="+" label={t('cb_opening_line')} value={d.opening_cash} />}
                 <Line sign="+" label={t('cb_cash_donations')} value={d.cash_total} />
                 <Line sign="−" label={t('cb_cash_exp')} value={d.committee_cash_exp} />
                 <Line sign="−" label={t('cb_setoff')} value={d.member_exp_setoff} />
@@ -86,6 +107,7 @@ export default function CashBank() {
               <div className="cb-head"><span>{t('cash_at_bank')}</span><b className="num" data-testid="cb-bank-total">{inr(d.bank_balance)}</b></div>
               <div className="cb-calc">
                 <div className="lbl">{t('cb_how_calc')}</div>
+                {n(d.opening_bank) > 0 && <Line sign="+" label={t('cb_opening_line')} value={d.opening_bank} />}
                 <Line sign="+" label={t('cb_upi_donations')} value={d.upi_total} />
                 <Line sign="−" label={t('cb_upi_exp')} value={d.committee_upi_exp} />
                 <Line sign="−" label={t('cb_paid_back_upi')} value={d.paid_back_upi} />
@@ -116,7 +138,7 @@ export default function CashBank() {
                     onKeyDown={(e) => e.key === 'Enter' && setModal({ kind: x.kind, edit: x, key: x.id })}>
                     <div className="avatar sm">{x.kind === 'withdrawal' ? '💵' : '🏦'}</div>
                     <div className="grow">
-                      <div className="main-t">{x.kind === 'withdrawal' ? t('tr_withdrawal') : t('tr_deposit')}</div>
+                      <div className="main-t">{t(KIND_KEY[x.kind] || 'tr_deposit')}</div>
                       <div className="sub-t">{fmtDay(x.transfer_date, lang, true)}{x.note ? ` · ${x.note}` : ''}</div>
                       {x.creator && <div className="sub-t">{t('by_x', { name: personName(x.creator, lang) })}</div>}
                     </div>
@@ -128,11 +150,71 @@ export default function CashBank() {
           </div>
         </>
       )}
+      {openingModal && data?.ready && hasOpening(d) && (
+        <OpeningModal openings={data.openings} onClose={() => setOpeningModal(false)}
+          onSaved={() => { setOpeningModal(false); reload(true); }} />
+      )}
       {modal && data?.ready && (
         <TransferModal key={modal.key} kind={modal.kind} edit={modal.edit} d={d}
           onClose={() => setModal(null)} onSaved={() => { setModal(null); reload(true); }} />
       )}
     </Page>
+  );
+}
+
+// Version 9 – opening balance: one "cash in hand" and one "cash at bank" amount (0 / empty = none).
+function OpeningModal({ openings, onClose, onSaved }) {
+  const { t } = useLang();
+  const toast = useToast();
+  const cur = (k) => openings.find((x) => x.kind === k);
+  const [date, setDate] = useState(openings[0]?.transfer_date || todayIST());
+  const [cash, setCash] = useState(cur('opening_cash') ? String(Number(cur('opening_cash').amount)) : '');
+  const [bank, setBank] = useState(cur('opening_bank') ? String(Number(cur('opening_bank').amount)) : '');
+  const [busy, setBusy] = useState(false);
+  const amt = (v) => (v === '' ? 0 : Math.round(Number(v) * 100) / 100);
+  const ok = [cash, bank].every((v) => { const a = amt(v); return Number.isFinite(a) && a >= 0 && a < 1e10; });
+
+  const save = async () => {
+    if (!ok) { toast(t('tr_invalid_amount'), 'error'); return; }
+    setBusy(true);
+    try {
+      for (const [kind, v] of [['opening_cash', cash], ['opening_bank', bank]]) {
+        const a = amt(v);
+        const old = cur(kind);
+        let res = null;
+        if (a > 0) {
+          res = old
+            ? await supabase.from('cash_transfers').update({ amount: a, transfer_date: date || todayIST() }).eq('id', old.id)
+            : await supabase.from('cash_transfers').insert({ kind, amount: a, transfer_date: date || todayIST(), note: '' });
+        } else if (old) {
+          res = await supabase.from('cash_transfers').delete().eq('id', old.id);
+        }
+        if (res?.error) throw res.error;
+      }
+      toast(t('opening_saved'), 'success');
+      onSaved();
+    } catch (e) {
+      toast(errMsg(e, t), 'error');
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={t('opening_title')}>
+      <div className="stack" data-testid="opening-modal">
+        <p className="hint">{t('opening_none')}</p>
+        <Field label={t('opening_date')}><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <Field label={t('opening_cash_label')} hint={t('opening_hint')}>
+          <input className="input big" inputMode="decimal" placeholder="₹" value={cash} data-testid="opening-cash-input"
+            onChange={(e) => setCash(e.target.value.replace(/[^0-9.]/g, ''))} />
+        </Field>
+        <Field label={t('opening_bank_label')} hint={t('opening_hint')}>
+          <input className="input big" inputMode="decimal" placeholder="₹" value={bank} data-testid="opening-bank-input"
+            onChange={(e) => setBank(e.target.value.replace(/[^0-9.]/g, ''))} />
+        </Field>
+        <button type="button" className="btn ok block" disabled={busy || !ok} onClick={save} data-testid="opening-save">✓ {t('save')}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -166,7 +248,7 @@ function TransferModal({ kind: kind0, edit, d, onClose, onSaved }) {
     onSaved();
   };
   const remove = async () => {
-    if (!window.confirm(t('tr_delete_confirm', { kind: edit.kind === 'withdrawal' ? t('tr_withdrawal') : t('tr_deposit'), amount: inr(edit.amount) }))) return;
+    if (!window.confirm(t('tr_delete_confirm', { kind: t(KIND_KEY[edit.kind] || 'tr_deposit'), amount: inr(edit.amount) }))) return;
     setBusy(true);
     const { error } = await supabase.from('cash_transfers').delete().eq('id', edit.id);
     setBusy(false);

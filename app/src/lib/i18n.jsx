@@ -672,8 +672,8 @@ const D = {
   err_not_paid_back: ['ఈ ఖర్చు తిరిగి చెల్లించబడలేదు', 'This expense was not paid back'],
   // ---- version 7: members may see the financial position ----
   finance_toggle: ['📊 సభ్యులు ఆర్థిక స్థితిని చూడవచ్చు', '📊 Members can see the financial position'],
-  finance_toggle_hint: ['మొత్తం విరాళాలు, మొత్తం ఖర్చులు — సభ్యుల హోమ్ స్క్రీన్‌లో', 'Total donations and total expenses – on their home screen'],
-  finance_on_done: ['సభ్యులు ఇప్పుడు మొత్తం విరాళాలు & ఖర్చులు చూడగలరు', 'Members can now see total donations & expenses'],
+  finance_toggle_hint: ['మొత్తం విరాళాలు, ఖర్చులు, చేతిలో నగదు, బ్యాంకులో నగదు — సభ్యుల హోమ్ స్క్రీన్‌లో', 'Total donations, total expenses, cash in hand and cash at bank – on their home screen'],
+  finance_on_done: ['సభ్యులు ఇప్పుడు విరాళాలు, ఖర్చులు, చేతిలో నగదు & బ్యాంకు నిల్వ చూడగలరు', 'Members can now see donations, expenses, cash in hand & cash at bank'],
   finance_off_done: ['సభ్యులకు ఆర్థిక స్థితి దాచబడింది', 'Financial position hidden from members'],
   finance_needs_db: ['"సభ్యులు ఆర్థిక స్థితి చూడటం", ఖర్చుల తిరిగి చెల్లింపుకు డేటాబేస్ అప్‌డేట్ (వెర్షన్ 7) అవసరం.', '"Members can see the financial position" and paying back expenses need the database update (version 7).'],
   finance_title: ['📊 కమిటీ ఆర్థిక స్థితి', '📊 Committee financial position'],
@@ -709,7 +709,7 @@ const D = {
   cb_expense_rule: ['ఖర్చు నమోదులో 💵 నగదు ఎంచుకుంటే చేతిలో నగదు తగ్గుతుంది, 📱 UPI ఎంచుకుంటే బ్యాంకులో నగదు తగ్గుతుంది. ఆమోదించిన ఖర్చులు మాత్రమే లెక్కలోకి వస్తాయి.', 'An expense recorded as 💵 Cash reduces cash in hand; as 📱 UPI it reduces cash at bank. Only approved expenses are counted.'],
   cb_committee_negative: ['కమిటీ వద్ద నగదు సున్నా కంటే తక్కువగా ఉంది — అన్ని నగదు అప్పగింతలు, బ్యాంకు నుండి తీసినవి నమోదు చేశారో చూడండి.', 'Cash with the committee is below zero – check that every cash handover and bank withdrawal is entered.'],
   cb_bank_negative: ['బ్యాంకులో నగదు సున్నా కంటే తక్కువగా ఉంది — అన్ని బ్యాంకు జమలు నమోదు చేశారో చూడండి.', 'Cash at bank is below zero – check that every bank deposit is entered.'],
-  cb_needs_db: ['"నగదు & బ్యాంకు" కోసం డేటాబేస్ అప్‌డేట్ (వెర్షన్ 8) అవసరం.', '"Cash & Bank" needs the database update (version 8).'],
+  cb_needs_db: ['"నగదు & బ్యాంకు" కోసం డేటాబేస్ అప్‌డేట్ (వెర్షన్ 9) అవసరం.', '"Cash & Bank" needs the database update (version 9).'],
   tr_deposit_btn: ['🏦 నగదు బ్యాంకులో జమ', '🏦 Deposit cash into bank'],
   tr_withdraw_btn: ['💵 బ్యాంకు నుండి నగదు తీయడం', '💵 Withdraw cash from bank'],
   tr_deposit: ['బ్యాంకులో జమ', 'Deposited into bank'],
@@ -732,6 +732,22 @@ const D = {
   audit_transfer_changed: ['నగదు ⇄ బ్యాంకు నమోదు మార్పు', 'Cash ⇄ bank entry changed'],
   audit_transfer_deleted: ['నగదు ⇄ బ్యాంకు నమోదు తొలగింపు', 'Cash ⇄ bank entry deleted'],
   del_transfers: ['నగదు ⇄ బ్యాంకు నమోదులు', 'Cash ⇄ bank entries'],
+  // ---- version 9: opening balance ----
+  tr_opening_cash: ['ప్రారంభ నిల్వ — చేతిలో నగదు', 'Opening balance – cash in hand'],
+  tr_opening_bank: ['ప్రారంభ నిల్వ — బ్యాంకులో నగదు', 'Opening balance – cash at bank'],
+  opening_title: ['📒 ప్రారంభ నిల్వ', '📒 Opening balance'],
+  opening_set: ['ప్రారంభ నిల్వ ఇవ్వండి', 'Set opening balance'],
+  opening_none: ['కమిటీ వద్ద ముందే డబ్బు ఉంటే (ఉదా: గత సంవత్సరం నిల్వ) ఇక్కడ ఇవ్వండి — చేతిలో నగదు, బ్యాంకులో నగదు వేర్వేరుగా.', "If the committee already had money (e.g. last year's balance), enter it here – cash in hand and cash at bank separately."],
+  opening_as_on: ['{date} నాటికి', 'As on {date}'],
+  opening_date: ['ఏ తేదీ నాటికి', 'As on date'],
+  opening_cash_label: ['ప్రారంభ చేతిలో నగదు', 'Opening cash in hand'],
+  opening_bank_label: ['ప్రారంభ బ్యాంకు నిల్వ', 'Opening cash at bank'],
+  opening_hint: ['లేకపోతే ఖాళీగా లేదా 0 ఉంచండి', 'Leave empty or 0 if none'],
+  opening_saved: ['ప్రారంభ నిల్వ సేవ్ అయింది ✅ — నిల్వలు మారాయి', 'Opening balance saved ✅ – balances updated'],
+  opening_plus_formula: ['ప్రారంభ నిల్వ + విరాళాలు − ఖర్చులు', 'Opening balance + Donations − Expenses'],
+  cb_opening_line: ['ప్రారంభ నిల్వ', 'Opening balance'],
+  fin_opening_incl: ['నిల్వలో ప్రారంభ నిల్వ {amount} కలిసి ఉంది', 'The balance includes the opening balance of {amount}'],
+  cb_needs_db_opening: ['ప్రారంభ నిల్వ కోసం డేటాబేస్ అప్‌డేట్ (వెర్షన్ 9) అవసరం.', 'The opening balance needs the database update (version 9).'],
 };
 
 export const DICT = D;

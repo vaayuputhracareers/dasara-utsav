@@ -263,6 +263,9 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
   });
   const both = (te, en) => [en, te].filter(Boolean).join(' / ');
   // Version 8 – net position = cash in hand + cash at bank − what the committee owes members
+  const openCash = sum(transfers.filter((x) => x.kind === 'opening_cash'));   // version 9 – opening balance
+  const openBank = sum(transfers.filter((x) => x.kind === 'opening_bank'));
+  const opening = n2(openCash + openBank);
   const deposits = transfers.filter((x) => x.kind === 'deposit');
   const withdrawals = transfers.filter((x) => x.kind === 'withdrawal');
   const committeeCashExp = approved.filter((e) => !e.paid_by && e.payment_mode === 'cash');
@@ -273,8 +276,8 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
   const memberBal = memberRows.filter((r) => r.Role !== 'Admin').map((r) => r['Cash Balance']);
   const withMembers = n2(memberBal.reduce((a, b) => a + Math.max(b, 0), 0));
   const owed = n2(memberBal.reduce((a, b) => a + Math.max(-b, 0), 0));
-  const bankBal = n2(sum(upi) - sum(committeeUpiExp) - sum(backUpi) + sum(deposits) - sum(withdrawals));
-  const cashInHand = n2(sum(cash) - sum(committeeCashExp) - sum(setOff) - sum(backCash) - sum(deposits) + sum(withdrawals) + owed);
+  const bankBal = n2(openBank + sum(upi) - sum(committeeUpiExp) - sum(backUpi) + sum(deposits) - sum(withdrawals));
+  const cashInHand = n2(openCash + sum(cash) - sum(committeeCashExp) - sum(setOff) - sum(backCash) - sum(deposits) + sum(withdrawals) + owed);
   const cashBankRows = [
     ['CASH IN HAND (with committee + with members)', '', cashInHand],
     ['      With the committee (admin)', '', n2(cashInHand - withMembers)],
@@ -302,7 +305,8 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     ['Expenses – approved', approved.length, sum(approved)],
     ['Expenses – waiting for approval', pending.length, sum(pending)],
     ['Expenses – rejected', rejected.length, sum(rejected)],
-    ['NET POSITION (valid donations − approved expenses)', '', n2(sum(valid) - sum(approved))],
+    ...(opening > 0 ? [['Opening balance – cash in hand', '', openCash], ['Opening balance – cash at bank', '', openBank]] : []),
+    [opening > 0 ? 'NET POSITION (opening balance + valid donations − approved expenses)' : 'NET POSITION (valid donations − approved expenses)', '', n2(opening + sum(valid) - sum(approved))],
     ...cashBankRows,
     ['Cash handed over to admin', handovers.length, sum(handovers, (h) => h.amount_received)],
     ['Member expenses paid back – cash', approved.filter((e) => e.settled_mode === 'cash').length, sum(approved.filter((e) => e.settled_mode === 'cash'))],

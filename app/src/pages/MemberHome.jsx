@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { hasCashBank, netOf, openingOf } from '../lib/cashbank.js';
 import { supabase } from '../lib/supabase.js';
 import { useLang } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -26,7 +27,7 @@ export default function MemberHome() {
     if (error) throw error;
     return data;
   }, [showFin]);
-  const finNet = fin ? Number(fin.donations_total) - Number(fin.expenses_total) : 0;
+  const finNet = fin ? netOf(fin) : 0;   // version 9: includes the opening balance
   return (
     <Page title={L(settings, 'temple_name') || t('app_name')} sub={`${L(settings, 'event_title')} ${settings.event_year}`} right={<LangSwitch />}>
       <div className="row between">
@@ -54,6 +55,16 @@ export default function MemberHome() {
                 <div><small>{t('total_expenses')}</small><b style={{ color: 'var(--kumkum)' }} data-testid="fin-expenses">{inr(fin.expenses_total)}</b></div>
                 <div><small>{t('finance_balance')}</small><b style={{ color: finNet >= 0 ? 'var(--green)' : 'var(--kumkum)' }} data-testid="fin-net">{inrSigned(finNet)}</b></div>
               </div>
+              {hasCashBank(fin) && (
+                <div className="fin-split" data-testid="fin-split">
+                  <div><small>{t('cash_in_hand')}</small><b className="num" data-testid="fin-cash">{inr(fin.cash_in_hand)}</b>
+                    <em className="num">{t('with_committee_x', { amount: inr(fin.cash_with_committee) })}</em>
+                    <em className="num">{t('with_members_x', { amount: inr(fin.cash_with_members) })}</em></div>
+                  <div><small>{t('cash_at_bank')}</small><b className="num" data-testid="fin-bank">{inr(fin.bank_balance)}</b></div>
+                </div>
+              )}
+              {openingOf(fin) > 0 && <p className="hint" style={{ marginTop: 6 }}>{t('fin_opening_incl', { amount: inr(openingOf(fin)) })}</p>}
+              {Number(fin.owed_to_members) > 0 && <p className="hint" style={{ marginTop: 6 }}>{t('net_owed_line', { amount: inr(fin.owed_to_members) })}</p>}
               <p className="hint" style={{ marginTop: 6 }}>{t('finance_hint')}</p>
             </div>
           )}

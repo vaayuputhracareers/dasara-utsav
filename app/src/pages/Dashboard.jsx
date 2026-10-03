@@ -10,7 +10,7 @@ import { Page, Spinner, Empty, useToast } from '../components/ui.jsx';
 import { DONATION_SELECT, donationRows } from './Donations.jsx';
 import { DbUpdateNotice, useDbVersion } from '../components/DataTools.jsx';
 import { EXPENSE_SELECT, expenseRows } from './Expenses.jsx';
-import { TRANSFER_SELECT, hasCashBank, transferRows } from '../lib/cashbank.js';
+import { TRANSFER_SELECT, hasCashBank, hasOpening, openingOf, netOf, transferRows } from '../lib/cashbank.js';
 
 const COLORS = ['#7a1d1d', '#ef7d1a', '#f6c344', '#c62828', '#16804a', '#9a3412', '#6d28d9', '#0e7490', '#a16207', '#be185d'];
 
@@ -47,7 +47,11 @@ export default function Dashboard() {
         { Item: '  Cash', Amount: Number(d.cash_total) },
         { Item: '  UPI', Amount: Number(d.upi_total) },
         { Item: 'Total expenses (approved)', Amount: Number(d.expenses_total) },
-        { Item: 'Net position', Amount: Number(d.donations_total) - Number(d.expenses_total) },
+        ...(hasOpening(d) && openingOf(d) > 0 ? [
+          { Item: 'Opening balance – cash in hand', Amount: Number(d.opening_cash) },
+          { Item: 'Opening balance – cash at bank', Amount: Number(d.opening_bank) },
+        ] : []),
+        { Item: openingOf(d) > 0 ? 'Net position (opening balance + donations − expenses)' : 'Net position', Amount: netOf(d) },
         ...(v8 ? [
           { Item: 'Cash in hand (with committee + with members)', Amount: Number(d.cash_in_hand) },
           { Item: '  With committee (admin)', Amount: Number(d.cash_with_committee) },
@@ -74,7 +78,7 @@ export default function Dashboard() {
     } catch (e) { toast(String(e.message || e), 'error'); }
   };
 
-  const net = d ? Number(d.donations_total) - Number(d.expenses_total) : 0;
+  const net = d ? netOf(d) : 0;   // version 9: includes the opening balance
   const split = hasCashBank(d);   // database version 8
   const owed = d ? Number(d.owed_to_members || 0) : 0;
   const maxCat = d ? Math.max(1, ...d.by_category.map((c) => Number(c.total))) : 1;
@@ -95,7 +99,7 @@ export default function Dashboard() {
         <>
           <div className={`net net-col ${net >= 0 ? 'pos' : 'neg'}`}>
             <div className="net-top">
-              <div><small>{t('net_position')}</small><div className="big">{inrSigned(net)}</div><small>{t('donations_minus_expenses')}</small></div>
+              <div><small>{t('net_position')}</small><div className="big">{inrSigned(net)}</div><small>{openingOf(d) > 0 ? t('opening_plus_formula') : t('donations_minus_expenses')}</small></div>
               <span className="pill">{net >= 0 ? t('surplus') : t('deficit')}</span>
             </div>
             {split && (

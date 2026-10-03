@@ -14,7 +14,7 @@
 --    • handovers       – day-end cash handed to admin
 --    • festival_days / programs – schedule & alankaram
 --    • pujas           – puja schedule: which family does the puja on which day
---    • cash_transfers  – cash deposited into / withdrawn from the bank (cash in hand ⇄ cash at bank)
+--    • cash_transfers  – opening balance + cash deposited into / withdrawn from the bank
 --    • audit_log       – history of every important change
 --    • storage buckets – 'bills' (private) and 'assets' (logo + splash picture, public)
 --  Security: Row Level Security is ON for every table.
@@ -256,18 +256,24 @@ alter table public.pujas    add column if not exists village_te     text not nul
 alter table public.pujas    add column if not exists gotram_te      text not null default '';   -- team only, like gotram
 
 -- Added in version 8 – cash moved between "cash in hand" and the bank, so both balances stay right:
---   deposit    = cash deposited into the bank   (cash in hand ↓, cash at bank ↑)
---   withdrawal = cash withdrawn from the bank   (cash at bank ↓, cash in hand ↑)
+--   deposit      = cash deposited into the bank   (cash in hand ↓, cash at bank ↑)
+--   withdrawal   = cash withdrawn from the bank   (cash at bank ↓, cash in hand ↑)
+-- Version 9 – the opening balance (money the committee already had, e.g. last year's balance):
+--   opening_cash = opening cash in hand, opening_bank = opening cash at bank (at most one of each)
 create table if not exists public.cash_transfers (
   id             uuid primary key default gen_random_uuid(),
   transfer_date  date not null default ((now() at time zone 'Asia/Kolkata')::date),
-  kind           text not null check (kind in ('deposit', 'withdrawal')),
+  kind           text not null check (kind in ('deposit', 'withdrawal', 'opening_cash', 'opening_bank')),
   amount         numeric(12,2) not null check (amount > 0),
   note           text not null default '',
   created_by     uuid references public.profiles(id),
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );
+-- version 9 upgrade (a database that already ran version 8): allow the two opening-balance kinds
+alter table public.cash_transfers drop constraint if exists cash_transfers_kind_check;
+alter table public.cash_transfers add constraint cash_transfers_kind_check
+  check (kind in ('deposit', 'withdrawal', 'opening_cash', 'opening_bank'));
 
 create table if not exists public.audit_log (
   id         bigint generated always as identity primary key,
@@ -289,6 +295,8 @@ create index if not exists programs_date_idx          on public.programs (progra
 create index if not exists pujas_date_idx             on public.pujas (puja_date, puja_time);
 create index if not exists handovers_member_idx       on public.handovers (member_id);
 create index if not exists cash_transfers_date_idx    on public.cash_transfers (transfer_date);
+create unique index if not exists cash_transfers_opening_once on public.cash_transfers (kind)
+  where kind in ('opening_cash', 'opening_bank');
 create index if not exists audit_at_idx               on public.audit_log (at desc);
 
 -- ---------------------------------------------------------------------
@@ -347,6 +355,62 @@ language sql stable security definer set search_path = '' as $$
   left join (select collected_by as id, count(*) n, sum(amount) s from public.donations
              where status = 'active' and payment_mode = 'cash' and handover_id is null group by 1) u on u.id = p.id;
 $$;
+
+-- Versions 8–9 – where the money is (admin dashboard + members' financial position):
+--   cash at bank   = opening bank + UPI donations − committee expenses paid by UPI − pay backs by temple UPI
+--                    + deposits − withdrawals
+--   cash in hand   = with the committee + still with members, where
+--   with committee = opening cash + cash admins collected + cash handed over − committee expenses paid in cash
+--                    − pay backs in cash − deposits + withdrawals
+--   net position   = opening balance + donations − approved expenses
+--                  = cash in hand + cash at bank − what the committee owes members
+create or replace function public.cash_position_internal() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_cash_don numeric; v_upi_don numeric; v_exp numeric;
+  v_open_cash numeric; v_open_bank numeric; v_dep numeric; v_wd numeric; v_tr bigint;
+  v_cexp numeric; v_uexp numeric; v_setoff numeric; v_pbc numeric; v_pbu numeric; v_ho numeric;
+  v_admin numeric; v_members numeric; v_owed numeric; v_committee numeric; v_bank numeric;
+begin
+  select coalesce(sum(amount) filter (where payment_mode = 'cash'), 0), coalesce(sum(amount) filter (where payment_mode = 'upi'), 0)
+    into v_cash_don, v_upi_don from public.donations where status = 'active';
+  select coalesce(sum(amount) filter (where kind = 'opening_cash'), 0), coalesce(sum(amount) filter (where kind = 'opening_bank'), 0),
+         coalesce(sum(amount) filter (where kind = 'deposit'), 0), coalesce(sum(amount) filter (where kind = 'withdrawal'), 0),
+         count(*) filter (where kind in ('deposit', 'withdrawal'))
+    into v_open_cash, v_open_bank, v_dep, v_wd, v_tr from public.cash_transfers;
+  select coalesce(sum(amount), 0),
+         coalesce(sum(amount) filter (where paid_by is null and payment_mode = 'cash'), 0),
+         coalesce(sum(amount) filter (where paid_by is null and payment_mode = 'upi'), 0),
+         coalesce(sum(amount) filter (where paid_by is not null and settled_mode is null), 0),
+         coalesce(sum(amount) filter (where settled_mode = 'cash'), 0),
+         coalesce(sum(amount) filter (where settled_mode = 'upi'), 0)
+    into v_exp, v_cexp, v_uexp, v_setoff, v_pbc, v_pbu from public.expenses where status = 'approved';
+  select coalesce(sum(amount_received), 0) into v_ho from public.handovers;
+  select coalesce(sum(balance) filter (where role = 'admin'), 0),
+         coalesce(sum(balance) filter (where role <> 'admin' and balance > 0), 0),
+         coalesce(-sum(balance) filter (where role <> 'admin' and balance < 0), 0)
+    into v_admin, v_members, v_owed from public.member_balances_internal();
+  v_committee := v_open_cash + v_admin + v_ho - v_cexp - v_pbc - v_dep + v_wd;
+  v_bank := v_open_bank + v_upi_don - v_uexp - v_pbu + v_dep - v_wd;
+  return jsonb_build_object(
+    'opening_cash',        v_open_cash,
+    'opening_bank',        v_open_bank,
+    'net_position',        v_open_cash + v_open_bank + v_cash_don + v_upi_don - v_exp,
+    'cash_in_hand',        v_committee + v_members,
+    'cash_with_committee', v_committee,
+    'cash_with_members',   v_members,
+    'owed_to_members',     v_owed,
+    'bank_balance',        v_bank,
+    'committee_cash_exp',  v_cexp,
+    'committee_upi_exp',   v_uexp,
+    'member_exp_setoff',   v_setoff,
+    'paid_back_cash',      v_pbc,
+    'paid_back_upi',       v_pbu,
+    'handed_over_total',   v_ho,
+    'deposits_total',      v_dep,
+    'withdrawals_total',   v_wd,
+    'transfers_count',     v_tr);
+end $$;
 
 -- ---------------------------------------------------------------------
 -- 3. TRIGGERS
@@ -862,8 +926,6 @@ language plpgsql stable security definer set search_path = '' as $$
 declare
   v_today date := (now() at time zone 'Asia/Kolkata')::date;
   r jsonb;
-  v_dep numeric; v_wd numeric; v_tr bigint; v_cexp numeric; v_uexp numeric; v_setoff numeric; v_ho numeric;
-  v_committee numeric; v_bank numeric;
 begin
   if not public.is_admin() then raise exception 'not_allowed'; end if;
   with d as (select * from public.donations where status = 'active'),
@@ -879,7 +941,6 @@ begin
     'today_total',     coalesce((select sum(amount) from d where (collected_at at time zone 'Asia/Kolkata')::date = v_today), 0),
     'today_count',     (select count(*) from d where (collected_at at time zone 'Asia/Kolkata')::date = v_today),
     'cash_with_members', coalesce((select sum(balance) from b where role <> 'admin' and balance > 0), 0),
-    'admin_cash',        coalesce((select sum(balance) from b where role = 'admin'), 0),   -- cash admins collected themselves
     'members_with_cash', (select count(*) from b where role <> 'admin' and balance > 0),
     'owed_to_members',   coalesce((select -sum(balance) from b where role <> 'admin' and balance < 0), 0),
     'paid_back_total',   coalesce((select sum(amount) from e where settled_mode is not null), 0),
@@ -903,31 +964,7 @@ begin
         group by p.id, p.full_name, p.name_te, p.role) x), '[]'::jsonb)
   ) into r;
 
-  -- Version 8 – where the money is. Net position = cash in hand + cash at bank − what the committee owes members.
-  --   cash at bank  = UPI donations − committee expenses paid by UPI − pay backs by temple UPI + deposits − withdrawals
-  --   cash in hand  = with the committee + still with members, where
-  --   with committee = cash admins collected + cash handed over − committee expenses paid in cash
-  --                    − pay backs in cash − deposits + withdrawals
-  select coalesce(sum(amount) filter (where kind = 'deposit'), 0), coalesce(sum(amount) filter (where kind = 'withdrawal'), 0), count(*)
-    into v_dep, v_wd, v_tr from public.cash_transfers;
-  select coalesce(sum(amount) filter (where paid_by is null and payment_mode = 'cash'), 0),
-         coalesce(sum(amount) filter (where paid_by is null and payment_mode = 'upi'), 0),
-         coalesce(sum(amount) filter (where paid_by is not null and settled_mode is null), 0)
-    into v_cexp, v_uexp, v_setoff from public.expenses where status = 'approved';
-  select coalesce(sum(amount_received), 0) into v_ho from public.handovers;
-  v_committee := (r->>'admin_cash')::numeric + v_ho - v_cexp - (r->>'paid_back_cash')::numeric - v_dep + v_wd;
-  v_bank := (r->>'upi_total')::numeric - v_uexp - (r->>'paid_back_upi')::numeric + v_dep - v_wd;
-  r := r || jsonb_build_object(
-    'cash_with_committee', v_committee,
-    'cash_in_hand',        v_committee + (r->>'cash_with_members')::numeric,
-    'bank_balance',        v_bank,
-    'committee_cash_exp',  v_cexp,
-    'committee_upi_exp',   v_uexp,
-    'member_exp_setoff',   v_setoff,
-    'handed_over_total',   v_ho,
-    'deposits_total',      v_dep,
-    'withdrawals_total',   v_wd,
-    'transfers_count',     v_tr);
+  r := r || public.cash_position_internal();   -- versions 8–9: opening balance, cash in hand, cash at bank
   return r;
 end $$;
 
@@ -1091,7 +1128,8 @@ begin
     'donations_total', coalesce((select sum(amount) from public.donations where status = 'active'), 0),
     'donations_count', (select count(*) from public.donations where status = 'active'),
     'expenses_total',  coalesce((select sum(amount) from public.expenses where status = 'approved'), 0),
-    'expenses_count',  (select count(*) from public.expenses where status = 'approved'));
+    'expenses_count',  (select count(*) from public.expenses where status = 'approved'))
+    || public.cash_position_internal();   -- version 9: members see cash in hand / cash at bank too
 end $$;
 
 create or replace function public.create_member_invite(p_mobile text, p_full_name text, p_name_te text, p_role text)
@@ -1141,7 +1179,7 @@ end $$;
 --   5 = puja schedule   6 = "Donate" (UPI) on the public page, QR poster editor, Telugu names in the schedules
 --   7 = member expenses paid back by the admin (cash / temple UPI), members may see the financial position
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 8 $$;
+language sql immutable set search_path = '' as $$ select 9 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1233,6 +1271,7 @@ revoke execute on function public.admin_delete_all_data(text, text, boolean) fro
 grant execute on function public.admin_delete_all_data(text, text, boolean) to authenticated;
 grant execute on function public.get_db_version() to anon, authenticated;
 revoke execute on function public.member_balances_internal() from public, anon, authenticated;
+revoke execute on function public.cash_position_internal() from public, anon, authenticated;
 revoke execute on function public.write_audit(text, text, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
 revoke execute on function public.create_profile_internal(uuid, text, jsonb) from public, anon, authenticated;

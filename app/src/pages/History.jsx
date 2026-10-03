@@ -3,6 +3,7 @@ import { useLang } from '../lib/i18n.jsx';
 import { useAsync } from '../lib/useAsync.js';
 import { inr, fmtDateTime, personName } from '../lib/format.js';
 import { Page, Spinner, Empty } from '../components/ui.jsx';
+import { KIND_KEY } from '../lib/cashbank.js';
 
 function describe(a, t, people, lang) {
   const d = a.details || {};
@@ -25,7 +26,7 @@ function describe(a, t, people, lang) {
     if (d.note) parts.push(d.note);
   } else if (a.entity === 'transfer') {   // version 8: cash ⇄ bank entries
     const last = (v) => (Array.isArray(v) ? v[1] : v);
-    parts.push(last(d.kind) === 'withdrawal' ? t('tr_withdrawal') : t('tr_deposit'));
+    parts.push(t(KIND_KEY[last(d.kind)] || 'tr_deposit'));
     const am = pair(d.amount, inr); if (am) parts.push(am); else if (last(d.amount) != null) parts.push(inr(last(d.amount)));
     const dt = pair(d.date); if (dt) parts.push(dt); else if (last(d.date)) parts.push(last(d.date));
     if (d.note) parts.push(d.note);
