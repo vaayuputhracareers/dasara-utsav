@@ -16,65 +16,112 @@
   </head>
   <body>
     <script>
-      /* Splash screen (Settings → Splash screen): the full-screen picture appears at once, before the app
-         itself has loaded. Once per app start; never on donor receipt (/r/…) or public page (/p/…) links. */
+      /* Splash screen (Settings → Splash screen): the complete picture, full screen, for the chosen seconds
+         (5 by default) every time the app is opened – it appears before the app itself has loaded.
+         • first open on a phone: asks the server once; later starts use the copy kept on the phone
+         • installed app: also when it is opened again after 5+ minutes away (not when coming back from
+           WhatsApp / SMS / a call started from the app)
+         • never on donor receipt (/r/…) or public page (/p/…) links; a tap skips it */
       (function () {
-        var KEY = 'dasara.splash';
-        function show(url, secs, bg) {
-          if (!url) return;
-          var old = document.getElementById('app-splash');
-          if (old && old.parentNode) old.parentNode.removeChild(old);
-          var wide = window.innerWidth > window.innerHeight * 0.8; // tablet / laptop: show the whole picture
-          var d = document.createElement('div');
+        var KEY = 'dasara.splash', AWAY_MS = window.DASARA_SPLASH_AWAY_MS || 5 * 60 * 1000, current = null;
+        function read() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }
+        function store(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} }
+        function excluded() { return /\/(r|p)\/[^\/]+/.test(location.pathname); }
+
+        // Full-screen cover; .picture(url, seconds) puts the picture on it.
+        function cover(bg) {
+          if (current) current.close(true);
+          var d = document.createElement('div'), done = false, timer, ctl;
           d.id = 'app-splash';
           d.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483000;overflow:hidden;cursor:pointer;' +
             'opacity:1;transition:opacity .4s ease;background:' + (/^#[0-9a-f]{6}$/i.test(bg || '') ? bg : '#1f0d08');
-          var img = document.createElement('img');
-          img.alt = '';
-          img.crossOrigin = 'anonymous';
-          img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;max-width:none;max-height:none;object-fit:' + (wide ? 'contain' : 'cover') +
-            ';opacity:0;transition:opacity .25s';
-          var back = null;
-          if (wide) { // blurred copy of the picture fills the sides
-            back = document.createElement('img');
-            back.alt = '';
-            back.crossOrigin = 'anonymous';
-            back.setAttribute('aria-hidden', 'true');
-            back.style.cssText = 'position:absolute;top:-8%;left:-8%;width:116%;height:116%;max-width:none;max-height:none;object-fit:cover;filter:blur(24px) brightness(.75);opacity:0;transition:opacity .25s';
-            back.src = url;
-            d.appendChild(back);
-          }
-          var done = false, timer;
-          function close() {
+          function close(now) {
             if (done) return;
             done = true;
             clearTimeout(timer);
             document.removeEventListener('keydown', onKey);
+            if (current === ctl) current = null;
+            if (now === true) { if (d.parentNode) d.parentNode.removeChild(d); return; }
             d.style.opacity = '0';
             setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 450);
           }
           function onKey(e) { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') close(); }
-          img.onload = function () {
+          function picture(url, secs) {
+            if (done) return;
             clearTimeout(timer);
-            img.style.opacity = '1';
-            if (back) back.style.opacity = '1';
-            timer = setTimeout(close, Math.min(10, Math.max(1, +secs || 3)) * 1000);
-          };
-          img.onerror = close;
-          timer = setTimeout(close, 4000); // picture not loading (weak network)? Don't hold the app back.
-          d.onclick = close;
+            // the complete picture on top; a soft blurred copy fills any gap on screens of another shape
+            var back = document.createElement('img'), img = document.createElement('img');
+            back.alt = img.alt = '';
+            back.setAttribute('aria-hidden', 'true');
+            back.crossOrigin = img.crossOrigin = 'anonymous';
+            back.style.cssText = 'position:absolute;top:-8%;left:-8%;width:116%;height:116%;max-width:none;max-height:none;object-fit:cover;' +
+              'filter:blur(24px) brightness(.75);opacity:0;transition:opacity .25s';
+            img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;' +
+              'opacity:0;transition:opacity .25s';
+            img.onload = function () {
+              if (done) return;
+              clearTimeout(timer);
+              img.style.opacity = back.style.opacity = '1';
+              timer = setTimeout(close, Math.min(10, Math.max(1, +secs || 5)) * 1000);
+            };
+            img.onerror = function () { close(); };
+            timer = setTimeout(close, 6000); // picture not loading (weak network)? Don't hold the app back.
+            back.src = img.src = url;
+            d.appendChild(back);
+            d.appendChild(img);
+          }
+          d.onclick = function () { close(); };
           document.addEventListener('keydown', onKey);
-          img.src = url;
-          d.appendChild(img);
           (document.body || document.documentElement).appendChild(d);
+          ctl = { picture: picture, close: close, wait: function (ms) { clearTimeout(timer); timer = setTimeout(close, ms); } };
+          current = ctl;
+          return ctl;
         }
+        function show(url, secs, bg) { if (url) cover(bg).picture(url, secs); }
         window.dasaraSplash = show;
+
+        // First open on this phone: ask the server whether there is a splash picture.
+        function firstOpen() {
+          var cfg = window.APP_CONFIG || {}, base = String(cfg.supabaseUrl || '').replace(/\/+$/, ''), key = cfg.supabaseKey;
+          if (!base || !key || !window.fetch) return;
+          var c = cover();
+          c.wait(3000);
+          fetch(base + '/rest/v1/rpc/get_branding', { method: 'POST', headers: { apikey: key, 'Content-Type': 'application/json' }, body: '{}' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (b) {
+              if (!b) { c.close(true); return; }
+              if (!b.splash_url) { store({ none: 1 }); c.close(true); return; } // no splash (or a database before version 4)
+              store({ u: b.splash_url, s: b.splash_seconds });
+              c.picture(b.splash_url, b.splash_seconds);
+            })
+            .catch(function () { c.close(true); });
+        }
+        function start() {
+          if (excluded()) return;
+          var s = read();
+          if (s && s.u) show(s.u, s.s, s.c);
+          else if (!s) firstOpen();
+        }
         try {
-          var s = JSON.parse(localStorage.getItem(KEY) || 'null');
-          if (!s || !s.u || /\/(r|p)\/[^\/]+/.test(location.pathname) || sessionStorage.getItem(KEY)) return;
-          sessionStorage.setItem(KEY, '1');
-          show(s.u, s.s, s.c);
+          if (!sessionStorage.getItem(KEY)) { sessionStorage.setItem(KEY, '1'); start(); }
         } catch (e) { /* no splash – the app opens normally */ }
+
+        // Installed app: opening it again after a while shows the splash again.
+        var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+        var hiddenAt = 0, leftAt = 0;
+        document.addEventListener('click', function (e) {
+          var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+          if (a && (a.target === '_blank' || !/^https?:/i.test(a.href) || a.origin !== location.origin)) leftAt = Date.now();
+        }, true);
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+          var away = hiddenAt ? Date.now() - hiddenAt : 0, viaLink = leftAt && hiddenAt - leftAt < 15000;
+          hiddenAt = 0;
+          leftAt = 0;
+          if (!standalone || away < AWAY_MS || viaLink || excluded()) return;
+          var s = read();
+          if (s && s.u) show(s.u, s.s, s.c);
+        });
       })();
     </script>
     <div id="root"></div>

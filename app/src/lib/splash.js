@@ -10,8 +10,8 @@ export function rememberSplash(src) {
   if (!src || !('splash_url' in src)) return; // database older than version 4: nothing to remember
   try {
     const u = String(src.splash_url || '').trim();
-    if (!u) { localStorage.removeItem(SPLASH_KEY); return; }
-    const s = Math.min(10, Math.max(1, parseInt(src.splash_seconds, 10) || 3));
+    if (!u) { localStorage.setItem(SPLASH_KEY, JSON.stringify({ none: 1 })); return; } // "no splash" – no need to ask again
+    const s = Math.min(10, Math.max(1, parseInt(src.splash_seconds, 10) || 5));
     const old = read();
     localStorage.setItem(SPLASH_KEY, JSON.stringify({ u, s, c: old && old.u === u ? old.c : undefined }));
     if (!warmed.has(u)) { warmed.add(u); warm(u); }

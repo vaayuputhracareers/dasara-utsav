@@ -62,7 +62,7 @@ export default function SettingsPage() {
     purposes: Array.isArray(settings.purposes) ? settings.purposes : [],
     expense_categories: Array.isArray(settings.expense_categories) ? settings.expense_categories : [],
     splash_url: settings.splash_url ?? '',
-    splash_seconds: settings.splash_seconds ?? 3,
+    splash_seconds: settings.splash_seconds ?? 5,
   }), [settings]);
   // Splash screen columns exist from database version 4 on; older databases keep saving everything else.
   const hasSplash = 'splash_url' in settings;
@@ -145,7 +145,7 @@ export default function SettingsPage() {
     patch.allow_self_signup = !!f.allow_self_signup;
     if (hasSplash) {
       patch.splash_url = (f.splash_url || '').trim();
-      patch.splash_seconds = Math.min(10, Math.max(1, parseInt(f.splash_seconds, 10) || 3));
+      patch.splash_seconds = Math.min(10, Math.max(1, parseInt(f.splash_seconds, 10) || 5));
     }
     setBusy(true);
     try { await save(patch); toast(t('settings_saved'), 'success'); } catch (e) { toast(errMsg(e, t), 'error', 5000); }
@@ -197,7 +197,7 @@ export default function SettingsPage() {
         <Field label={t('splash_seconds')}>
           <select className="input" value={f.splash_seconds} disabled={!hasSplash} data-testid="splash-seconds"
             onChange={(e) => set('splash_seconds', parseInt(e.target.value, 10))}>
-            {[...new Set([2, 3, 4, 5, Number(f.splash_seconds) || 3])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{t('seconds_n', { n })}</option>)}
+            {[...new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, Number(f.splash_seconds) || 5])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{t('seconds_n', { n })}</option>)}
           </select>
         </Field>
       </div>

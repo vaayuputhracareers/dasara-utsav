@@ -113,8 +113,9 @@ create table if not exists public.app_settings (
 
 -- Added in version 4 – splash screen: a full-screen picture shown for a few seconds when the app opens.
 alter table public.app_settings add column if not exists splash_url text not null default '';
-alter table public.app_settings add column if not exists splash_seconds int not null default 3
+alter table public.app_settings add column if not exists splash_seconds int not null default 5
   check (splash_seconds between 1 and 10);
+alter table public.app_settings alter column splash_seconds set default 5;
 insert into public.app_settings (id) values (1) on conflict (id) do nothing;
 
 create table if not exists public.handovers (
