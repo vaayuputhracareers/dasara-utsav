@@ -13,6 +13,7 @@ village, street, dates, UPI ID, receipt message, programs and members.
 | B. GitHub (website) | you create the account + key, **Arena uploads everything** | ~10 min |
 | C. Connect them (`config.js`) | you | ~3 min |
 | D. First time inside the app | you (Admin) | ~10 min |
+| E. Own subdomain (optional, Cloudflare) | you add 1 DNS record, Arena does the rest | ~5 min + certificate wait |
 
 ---
 
@@ -104,7 +105,7 @@ Never send the secret key or database password.)*
    - Donation purposes, expense categories
    - The Telugu WhatsApp receipt message (tap the tags to insert; live preview below)
    - Logo / deity photo (optional)
-   - *App web address*: **leave empty**. The app detects `https://USERNAME.github.io/dasara-utsav` by itself.
+   - *App web address*: **leave empty**. The app detects its address by itself (`https://USERNAME.github.io/dasara-utsav` or your own subdomain).
 3. **☰ More → 👥 Members → ➕ Add member** → name, Telugu name, mobile, password →
    **Send login details on WhatsApp**. Repeat for each team member.
    (You can also let members sign up themselves. They wait for your approval.)
@@ -112,6 +113,37 @@ Never send the secret key or database password.)*
 5. **☰ More → 📱 Public page & QR** → switch ON the sections visitors may see →
    turn the page **ON** → **Download QR poster** → print it and keep it at the temple.
 6. On every phone: open the link in **Chrome → ⋮ → Add to Home screen** so it opens like an app.
+
+---
+
+## Part E (optional): Your own address with a Cloudflare subdomain
+
+Use an address like `dasara.yourdomain.com` instead of `USERNAME.github.io/dasara-utsav`.
+👉 **Do this before printing QR posters and before members add the app to their phones**, because both use the address.
+
+1. **Cloudflare** → your domain → **DNS** → **Records** → **Add record**:
+
+   | Field | Value |
+   |---|---|
+   | Type | `CNAME` |
+   | Name | `dasara` (only the part before your domain) |
+   | Target | `USERNAME.github.io` (nothing after it, **no** `/dasara-utsav`) |
+   | Proxy status | **DNS only** (grey cloud) ← important |
+   | TTL | Auto |
+
+   → **Save**.
+   > Why the grey cloud? GitHub creates the free HTTPS certificate itself. With the orange cloud (proxy) the
+   > certificate cannot be created, and the site may show *"too many redirects"*.
+2. Send the full address (e.g. `dasara.yourdomain.com`) to Arena. Arena connects it on GitHub, rebuilds the
+   website for the new address, switches on HTTPS and checks everything.
+   *Doing it yourself instead:* repository **Settings → Pages → Custom domain** → type the address → **Save** →
+   wait for *"DNS check successful"* → **Actions → Publish website → Run workflow** (the app must be rebuilt for
+   the new address) → when the certificate is ready (5–60 minutes) tick **Enforce HTTPS**.
+3. Open `https://dasara.yourdomain.com` ✓. Old `github.io` links (receipts already sent) forward to the new address automatically.
+4. In the app, **Settings → App web address** stays **empty**.
+
+*Optional extra safety:* GitHub profile photo → **Settings → Pages** → **Add a domain** → `yourdomain.com` →
+add the TXT record that GitHub shows to Cloudflare DNS → **Verify**. This stops anyone else from using your domain on GitHub.
 
 ---
 
@@ -134,6 +166,10 @@ Never send the secret key or database password.)*
   Check **Actions** for the green ✓, then refresh the page.
 - **"There isn't a GitHub Pages site here"** → the very first publish is not finished yet. Wait 2–3 minutes.
   **Settings → Pages** shows *"Your site is live at …"* when it is ready.
+- **Own subdomain shows a blank page** → the website was not rebuilt after the domain was added:
+  **Actions → Publish website → Run workflow**.
+- **"Too many redirects" / certificate warning on the subdomain** → in Cloudflare the record is orange (proxied).
+  Set it to **DNS only** (grey cloud) and wait a few minutes.
 - **Don't rename the repository or the GitHub username during the festival.** The website address
   would change and printed QR posters would stop working.
 - **Member forgot password** → Members → tap the member → **Reset password** → send on WhatsApp.
