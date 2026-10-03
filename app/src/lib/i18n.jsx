@@ -755,6 +755,13 @@ const D = {
   member_deleted_cash: ['{name} వద్ద ఇంకా {amount} నగదు ఉంది — అందినప్పుడు "నగదు అప్పగింత"లో నమోదు చేయండి.', '{name} still holds {amount} cash – record it in "Cash handover" when you receive it.'],
   member_deleted_owed: ['కమిటీ {name}కు {amount} ఇవ్వాలి — "ఖర్చులు"లో తిరిగి చెల్లించండి.', 'The committee owes {name} {amount} – pay it back from Expenses.'],
   member_deleted_pending: ['{n} ఖర్చులు ఇంకా మీ ఆమోదం కోసం ఉన్నాయి.', '{n} expense(s) still wait for your approval.'],
+  // ---- expense approval: the member's cash ----
+  member_cash_title: ['{name} వద్ద ఇప్పుడు ఉన్న నగదు', 'Cash with {name} now'],
+  member_cash_calc: ['వసూలు చేసిన నగదు {c} − సర్దుబాటు చేసిన ఖర్చులు {s} − అప్పగించినది {h}', 'Cash collected {c} − expenses set off {s} − handed over {h}'],
+  member_cash_owed: ['కమిటీ {name}కు {amount} ఇవ్వాలి', 'The committee owes {name} {amount}'],
+  member_cash_after_setoff: ['ఈ ఖర్చు ఆమోదించి సర్దుబాటు చేస్తే: {amount}', 'After approving this expense (set off): {amount}'],
+  member_cash_after_payback: ['తిరిగి చెల్లిస్తే నగదు మారదు: {amount}', 'With pay back the cash stays: {amount}'],
+  member_cash_short: ['{name} వద్ద తగినంత నగదు లేదు — సర్దుబాటు చేస్తే కమిటీ {name}కు {amount} ఇవ్వాలి. "తిరిగి చెల్లించండి" కూడా ఎంచుకోవచ్చు.', 'Not enough cash with {name} – with set off the committee will owe {name} {amount}. You can choose Pay back instead.'],
   member_deleted: ['{name} తొలగించబడ్డారు ✅', '{name} deleted ✅'],
   member_deleted_kept: ['{name} తొలగించబడ్డారు ✅ — వారి రసీదులు / ఖర్చులు లెక్కల్లో ఉన్నాయి', '{name} deleted ✅ – their receipts / expenses stay in the accounts'],
   err_member_has_balance: ['ఈ సభ్యుని నగదు బ్యాలెన్స్ ఇంకా సున్నా కాదు — ముందుగా "నగదు అప్పగింత"లో సర్దుబాటు చేయండి', "This member's cash balance is not zero yet – settle it in \"Cash handover\" first"],

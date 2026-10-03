@@ -36,6 +36,23 @@ export function useMemberBalance(memberId, enabled = true) {
   return bal;
 }
 
+/** The full cash position of one person (cash collected, expenses set off, handed over, balance) – admin only. */
+export function useMemberCash(memberId, enabled = true) {
+  const [row, setRow] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    setRow(null);
+    if (!memberId || !enabled) return undefined;
+    supabase.rpc('get_member_balances').then(({ data, error }) => {
+      if (!alive || error) return;
+      const m = (data || []).find((x) => x.member_id === memberId);
+      setRow(m || { member_id: memberId, balance: 0, cash_collected: 0, expenses_approved: 0, handed_over: 0 });
+    });
+    return () => { alive = false; };
+  }, [memberId, enabled]);
+  return row;
+}
+
 /** Small badge for lists: "↔️ Set off" / "💸 Paid back · UPI" (approved member expenses only). */
 export function SettleBadge({ e }) {
   const { t } = useLang();

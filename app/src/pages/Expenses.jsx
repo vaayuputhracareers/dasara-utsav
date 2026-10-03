@@ -10,7 +10,7 @@ import { compressImage } from '../lib/image.js';
 import { exportSheets } from '../lib/exportXlsx.js';
 import { inr, fmtDay, fmtDateTime, todayIST, personName } from '../lib/format.js';
 import { Page, Spinner, Empty, Modal, Field, Seg, Badge, useToast } from '../components/ui.jsx';
-import { SettleBadge, settleStatus, PayBackModal, useMemberBalance, balText, modeLabel } from '../components/Settle.jsx';
+import { SettleBadge, settleStatus, PayBackModal, useMemberBalance, useMemberCash, balText, modeLabel } from '../components/Settle.jsx';
 import { settlementLabel } from '../lib/settle.js';
 
 export const EXPENSE_SELECT = '*, creator:profiles!expenses_created_by_fkey(id,full_name,name_te), payer:profiles!expenses_paid_by_fkey(id,full_name,name_te)';
@@ -152,6 +152,29 @@ export function ExpenseForm({ open, onClose, onSaved, edit }) {
   );
 }
 
+// The member's cash right now, and what approving this expense does to it (shown to the admin).
+function MemberCashBox({ cash, name, amount, effect }) {
+  const { t } = useLang();
+  if (!cash) return <div className="cash-box"><Spinner sm /></div>;
+  const bal = Number(cash.balance || 0);
+  const after = bal - Number(amount || 0);
+  return (
+    <div className={`cash-box ${bal < 0 ? 'neg' : ''}`} data-testid="member-cash">
+      <div className="lbl">💵 {t('member_cash_title', { name })}</div>
+      <div className="big num" data-testid="member-cash-amount">{bal < 0 ? `−${inr(-bal)}` : inr(bal)}</div>
+      {bal < 0 && <div className="warn-t">{t('member_cash_owed', { name, amount: inr(-bal) })}</div>}
+      <div className="hint num">{t('member_cash_calc', { c: inr(cash.cash_collected), s: inr(cash.expenses_approved), h: inr(cash.handed_over) })}</div>
+      {effect === 'setoff' && (
+        <>
+          <div className="after num" data-testid="member-cash-after">{t('member_cash_after_setoff', { amount: after < 0 ? `−${inr(-after)}` : inr(after) })}</div>
+          {after < 0 && <div className="warn-t">{t('member_cash_short', { name, amount: inr(-after) })}</div>}
+        </>
+      )}
+      {effect && effect !== 'setoff' && <div className="after num" data-testid="member-cash-after">{t('member_cash_after_payback', { amount: bal < 0 ? `−${inr(-bal)}` : inr(bal) })}</div>}
+    </div>
+  );
+}
+
 function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
   const { t, lang, P } = useLang();
   const { isAdmin, profile } = useAuth();
@@ -165,7 +188,11 @@ function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
   const [settle, setSettle] = useState('setoff');   // pending: 'setoff' | 'cash' | 'upi'
   const [ref, setRef] = useState('');
   const [payOpen, setPayOpen] = useState(false);
-  const bal = useMemberBalance(e?.paid_by, isAdmin && memberExp && !e?.settled_mode);
+  // whose cash the admin should see: the member who paid, else the member who submitted it (never yourself)
+  const cashOf = e?.paid_by || (e?.created_by && e.created_by !== profile?.id ? e.created_by : null);
+  const cashFor = e?.paid_by ? e.payer : e?.creator;
+  const cash = useMemberCash(cashOf, isAdmin && !!cashOf && cashOf !== profile?.id && e?.status !== 'rejected');
+  const bal = memberExp && !e?.settled_mode && cash ? Number(cash.balance) : null;
   const payer = e ? personName(e.payer, lang) : '';
   useEffect(() => {
     setBillUrl('');
@@ -205,6 +232,10 @@ function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
           <div className="num" style={{ fontSize: 26, fontWeight: 900, color: 'var(--kumkum)' }}>{inr(e.amount)}</div>
           <StatusBadge s={e.status} />
         </div>
+        {isAdmin && cashOf && cashOf !== profile?.id && e.status !== 'rejected' && (
+          <MemberCashBox cash={cash} name={personName(cashFor, lang)} amount={e.amount}
+            effect={e.status === 'pending' && memberExp ? settle : null} />
+        )}
         <dl className="kv">
           <dt>{t('date')}</dt><dd>{fmtDay(e.expense_date, lang, true)}</dd>
           {e.description && <><dt>{t('description')}</dt><dd>{e.description}</dd></>}
