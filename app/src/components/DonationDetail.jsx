@@ -6,7 +6,7 @@ import { useSettings } from '../context/SettingsContext.jsx';
 import { errMsg } from '../lib/errors.js';
 import { inr, fmtDateTime, personName } from '../lib/format.js';
 import { buildReceiptMessage, waLink, smsLink, receiptLink } from '../lib/receipt.js';
-import { Modal, Field, Seg, Badge, useToast, copyText } from './ui.jsx';
+import { Modal, Field, Seg, Badge, useToast, copyText, MobileInput } from './ui.jsx';
 
 export function DonationBadges({ d }) {
   const { t } = useLang();
@@ -118,7 +118,7 @@ export default function DonationDetail({ d, onClose, onChanged }) {
       {mode === 'edit' && f && (
         <div className="stack">
           <Field label={t('donor_name')}><input className="input" value={f.donor_name} onChange={(e) => setF({ ...f, donor_name: e.target.value })} /></Field>
-          <Field label={t('mobile')}><input className="input num" inputMode="tel" value={f.mobile} onChange={(e) => setF({ ...f, mobile: e.target.value })} /></Field>
+          <Field label={t('mobile')}><MobileInput className="input num" value={f.mobile} onChange={(v) => setF({ ...f, mobile: v })} autoComplete="off" data-testid="edit-donor-mobile" /></Field>
           <Field label={t('amount')}><input className="input big" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value.replace(/[^0-9.]/g, '') })} /></Field>
           <Field label={t('payment_mode')}><Seg value={f.payment_mode} onChange={(v) => setF({ ...f, payment_mode: v })} options={[{ value: 'cash', label: `💵 ${t('cash')}` }, { value: 'upi', label: '📱 UPI' }]} /></Field>
           {f.payment_mode === 'upi' && <Field label={t('upi_ref')} optional><input className="input num" value={f.upi_ref} onChange={(e) => setF({ ...f, upi_ref: e.target.value })} /></Field>}

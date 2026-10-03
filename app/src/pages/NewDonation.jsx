@@ -7,7 +7,7 @@ import { useSettings } from '../context/SettingsContext.jsx';
 import { errMsg } from '../lib/errors.js';
 import { num, inr, personName } from '../lib/format.js';
 import { upiLink } from '../lib/receipt.js';
-import { Page, Field, Seg, Modal, useToast } from '../components/ui.jsx';
+import { Page, Field, Seg, Modal, useToast, MobileInput } from '../components/ui.jsx';
 import { QrImage } from '../components/QrImage.jsx';
 
 const LAST_VILLAGE = 'utsav.lastVillage';
@@ -75,7 +75,7 @@ export default function NewDonation() {
           <input className={`input ${errors.donor_name ? 'bad' : ''}`} value={f.donor_name} onChange={(e) => set('donor_name', e.target.value)} autoComplete="off" />
         </Field>
         <Field label={`${t('donor_mobile')} *`} error={errors.mobile}>
-          <input className={`input num ${errors.mobile ? 'bad' : ''}`} inputMode="tel" placeholder="98765 43210" value={f.mobile} onChange={(e) => set('mobile', e.target.value)} autoComplete="off" />
+          <MobileInput className={`input num ${errors.mobile ? 'bad' : ''}`} value={f.mobile} onChange={(v) => set('mobile', v)} autoComplete="off" data-testid="donor-mobile" />
         </Field>
         <Field label={`${t('amount')} *`} error={errors.amount}>
           {quick.length > 0 && (
