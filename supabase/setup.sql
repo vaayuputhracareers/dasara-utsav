@@ -13,6 +13,7 @@
 --    • expenses        – with approval flow + bill photo
 --    • handovers       – day-end cash handed to admin
 --    • festival_days / programs – schedule & alankaram
+--    • pujas           – puja schedule: which family does the puja on which day
 --    • audit_log       – history of every important change
 --    • storage buckets – 'bills' (private) and 'assets' (logo + splash picture, public)
 --  Security: Row Level Security is ON for every table.
@@ -116,6 +117,8 @@ alter table public.app_settings add column if not exists splash_url text not nul
 alter table public.app_settings add column if not exists splash_seconds int not null default 5
   check (splash_seconds between 1 and 10);
 alter table public.app_settings alter column splash_seconds set default 5;
+-- Added in version 5 – puja schedule on the public page (Public page → "What can visitors see?").
+alter table public.app_settings add column if not exists show_pujas boolean not null default true;
 insert into public.app_settings (id) values (1) on conflict (id) do nothing;
 
 create table if not exists public.handovers (
@@ -205,6 +208,22 @@ create table if not exists public.programs (
   created_at    timestamptz not null default now()
 );
 
+-- Added in version 5 – puja schedule: which family does the puja on which festival day.
+-- Mobile, gotram and note are for the team only (never on the public page).
+create table if not exists public.pujas (
+  id           uuid primary key default gen_random_uuid(),
+  puja_date    date not null,
+  puja_time    time,
+  puja_name    text not null default '',
+  family_name  text not null default '',          -- empty = the date is still free
+  village      text not null default '',
+  gotram       text not null default '',
+  mobile       text check (mobile is null or mobile ~ '^[0-9]{10}$'),
+  note         text not null default '',
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
 create table if not exists public.audit_log (
   id         bigint generated always as identity primary key,
   at         timestamptz not null default now(),
@@ -222,6 +241,7 @@ create index if not exists expenses_status_idx        on public.expenses (status
 create index if not exists expenses_created_by_idx    on public.expenses (created_by);
 create index if not exists expenses_paid_by_idx       on public.expenses (paid_by);
 create index if not exists programs_date_idx          on public.programs (program_date, start_time);
+create index if not exists pujas_date_idx             on public.pujas (puja_date, puja_time);
 create index if not exists handovers_member_idx       on public.handovers (member_id);
 create index if not exists audit_at_idx               on public.audit_log (at desc);
 
@@ -388,6 +408,17 @@ drop trigger if exists profiles_guard on public.profiles;
 create trigger profiles_guard before update on public.profiles
   for each row execute function public.profiles_guard();
 
+-- puja schedule: remember when an entry was last changed (Export → "changed after the last export")
+create or replace function public.touch_updated_at() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists pujas_touch on public.pujas;
+create trigger pujas_touch before update on public.pujas
+  for each row execute function public.touch_updated_at();
+
 -- 3c. Donation: receipt number, token, collector are set by the server
 create or replace function public.donations_before_insert() returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -531,6 +562,7 @@ alter table public.donations      enable row level security;
 alter table public.expenses       enable row level security;
 alter table public.festival_days  enable row level security;
 alter table public.programs       enable row level security;
+alter table public.pujas          enable row level security;
 alter table public.audit_log      enable row level security;
 alter table public.receipt_counter enable row level security;   -- no policies: only server functions touch it
 
@@ -596,6 +628,14 @@ drop policy if exists programs_write on public.programs;
 create policy programs_write on public.programs for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
+-- puja schedule: every team member can see it, only the admin writes it
+drop policy if exists pujas_select on public.pujas;
+create policy pujas_select on public.pujas for select to authenticated
+  using (public.is_active_user());
+drop policy if exists pujas_write on public.pujas;
+create policy pujas_write on public.pujas for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
 -- audit log (admin read only)
 drop policy if exists audit_select on public.audit_log;
 create policy audit_select on public.audit_log for select to authenticated
@@ -606,7 +646,7 @@ grant usage on schema public to anon, authenticated;
 revoke all on all tables in schema public from anon;
 grant select, insert, update, delete on public.profiles, public.member_invites, public.app_settings,
   public.handovers, public.donations, public.expenses, public.festival_days, public.programs,
-  public.audit_log to authenticated;
+  public.pujas, public.audit_log to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 5. FUNCTIONS CALLED BY THE APP
@@ -649,7 +689,7 @@ begin
             'programs', s.show_programs, 'donation_total', s.show_donation_total,
             'donor_list', s.show_donor_list, 'donor_amounts', s.show_donor_amounts,
             'expense_summary', s.show_expense_summary, 'expense_details', s.show_expense_details,
-            'net_position', s.show_net_position));
+            'net_position', s.show_net_position, 'pujas', s.show_pujas));
 
   if s.show_programs then
     r := r || jsonb_build_object(
@@ -658,6 +698,13 @@ begin
           'id', p.id, 'program_date', p.program_date, 'start_time', p.start_time, 'end_time', p.end_time,
           'title_te', p.title_te, 'title_en', p.title_en, 'place', p.place, 'details', p.details)
           order by p.program_date, p.start_time nulls last) from public.programs p), '[]'::jsonb));
+  end if;
+  if s.show_pujas then   -- date, puja and family only: never mobile, gotram or note
+    r := r || jsonb_build_object(
+      'pujas', coalesce((select jsonb_agg(jsonb_build_object(
+          'id', p.id, 'puja_date', p.puja_date, 'puja_time', p.puja_time, 'puja_name', p.puja_name,
+          'family_name', p.family_name, 'village', p.village)
+          order by p.puja_date, p.puja_time nulls last, p.created_at) from public.pujas p), '[]'::jsonb));
   end if;
   if s.show_donation_total or s.show_net_position then
     r := r || jsonb_build_object('donations_total', v_don, 'donations_count', v_cnt);
@@ -899,7 +946,7 @@ end $$;
 -- "database update needed" (= run this file again) when it is older.
 --   2 = data tools (export / delete)   3 = 6-digit PIN reset + logo upload permission   4 = splash screen
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 4 $$;
+language sql immutable set search_path = '' as $$ select 5 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -942,6 +989,7 @@ begin
     'handovers',       (select count(*) from public.handovers),
     'programs',        (select count(*) from public.programs),
     'festival_days',   (select count(*) from public.festival_days),
+    'pujas',           (select count(*) from public.pujas),
     'history',         (select count(*) from public.audit_log));
 
   delete from public.donations where true;      -- "where true": allowed even where DELETE-without-WHERE is blocked
@@ -949,6 +997,7 @@ begin
   delete from public.handovers where true;
   delete from public.programs where true;
   delete from public.festival_days where true;
+  delete from public.pujas where true;
   delete from public.audit_log where true;
   update public.receipt_counter set last_no = 0 where id = 1;
 

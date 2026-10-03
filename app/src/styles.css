@@ -303,3 +303,9 @@ ul.plain{margin:6px 0 0 18px;padding:0}
 /* Settings → Splash screen: small upright preview of the picture */
 .splash-thumb{width:68px;height:121px;border-radius:10px;border:2px solid var(--line);overflow:hidden;background:#f6efe4;display:flex;align-items:center;justify-content:center;font-size:30px;flex:0 0 auto}
 .splash-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+/* puja schedule */
+.puja-summary{font-size:13px;font-weight:800;color:var(--maroon);background:var(--orange-l);border-radius:10px;padding:7px 12px;align-self:flex-start}
+.puja-name{font-size:12px;font-weight:700;color:var(--saffron);text-transform:none}
+.ti.puja time{min-width:54px}
+.ti.puja.free .tt{color:var(--muted)}
+.ti.puja a{color:var(--maroon);font-weight:700;text-decoration:none}

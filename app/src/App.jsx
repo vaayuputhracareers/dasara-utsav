@@ -56,6 +56,7 @@ function Private() {
             <Route path="/donations" element={<Donations />} />
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/programs" element={<Programs />} />
+            <Route path="/puja" element={<Programs />} />
             <Route path="/me" element={<Me />} />
             {isAdmin && (
               <>

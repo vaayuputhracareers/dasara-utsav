@@ -51,6 +51,7 @@ export default function Layout({ children }) {
     { to: '/expenses', icon: '🧾', label: t('nav_expenses'), badge: pc.expenses },
     { to: '/handover', icon: '🤝', label: t('nav_handover') },
     { to: '/programs', icon: '📅', label: t('nav_programs') },
+    { to: '/puja', icon: '🪔', label: t('nav_puja') },
     { to: '/members', icon: '👥', label: t('nav_members'), badge: pc.members },
     { to: '/public-page', icon: '📱', label: t('nav_public') },
     { to: '/settings', icon: '⚙️', label: t('nav_settings') },
@@ -62,6 +63,7 @@ export default function Layout({ children }) {
     { to: '/donations', icon: '📋', label: t('nav_my_receipts') },
     { to: '/expenses', icon: '🧾', label: t('nav_expenses') },
     { to: '/programs', icon: '📅', label: t('nav_programs') },
+    { to: '/puja', icon: '🪔', label: t('nav_puja') },
     { to: '/me', icon: '👤', label: t('nav_me') },
   ];
   const bottom = isAdmin ? adminNav : memberNav;

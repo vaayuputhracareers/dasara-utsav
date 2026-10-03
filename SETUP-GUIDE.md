@@ -119,6 +119,10 @@ Never send the secret key or database password.)*
    **Send login details on WhatsApp**. Repeat for each team member.
    (You can also let members sign up themselves. They wait for your approval.)
 4. **☰ More → 📅 Programs** → *Fill sample Navaratri alankaram list* → edit each day → add programs with timings.
+   **☰ More → 🪔 Puja schedule** (or the **🪔 Puja schedule** tab on the Programs page) → *📅 Add all festival days*
+   → tap a day → write the **family doing the puja** (and if you like: puja name, time, village, gotram, mobile,
+   note) → **Save**. A day without a family shows **Available**. Mobile, gotram and note are seen only by the team.
+   Every team member sees the puja schedule; visitors see it on the public page when *🪔 Puja schedule* is ON there.
 5. **☰ More → 📱 Public page & QR** → switch ON the sections visitors may see →
    turn the page **ON** → **Download QR poster** → print it and keep it at the temple.
 6. On every phone: open the link in **Chrome → ⋮ → Add to Home screen** so it opens like an app (the icon is called **Dasara**).
@@ -176,7 +180,7 @@ add the TXT record that GitHub shows to Cloudflare DNS → **Verify**. This stop
 
 1. **⚙️ Settings → 🗄️ Data → 📥 Export data**: choose the year → **Download Excel**, and also download
    **Bill photos (ZIP)**. Keep both files safe (Google Drive / laptop). The Excel file has these sheets: Summary,
-   Donations, Expenses, Cash handovers, Members, Day-wise, Programs and Alankaram.
+   Donations, Expenses, Cash handovers, Members, Day-wise, Programs, Alankaram and Puja schedule.
 2. Before deleting: confirm every member's **cash handover**, and approve or reject the waiting expenses.
 3. **🗑️ Delete data** (two steps, admin only):
    - Step 1 shows exactly what will be deleted, warns about cash still with members, and marks each year

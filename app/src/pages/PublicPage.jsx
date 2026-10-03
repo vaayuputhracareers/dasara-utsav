@@ -5,6 +5,7 @@ import { useLang, LangSwitch } from '../lib/i18n.jsx';
 import { inr, inrSigned, fmtDay, num } from '../lib/format.js';
 import { Spinner, Empty } from '../components/ui.jsx';
 import Schedule from '../components/Schedule.jsx';
+import PujaSchedule from '../components/PujaSchedule.jsx';
 
 const COLORS = ['#7a1d1d', '#ef7d1a', '#f6c344', '#c62828', '#16804a', '#9a3412', '#6d28d9', '#0e7490', '#a16207', '#be185d'];
 
@@ -39,8 +40,9 @@ export default function PublicPage() {
   const b = data.branding || {};
   const s = data.sections || {};
   const hasAccounts = s.donation_total || s.net_position || s.expense_summary || s.expense_details || s.donor_list;
-  const showTabs = s.programs && hasAccounts;
-  const cur = showTabs ? tab : s.programs ? 'programs' : 'accounts';
+  const tabs = [s.programs && 'programs', s.pujas && data.pujas?.length > 0 && 'pujas', hasAccounts && 'accounts'].filter(Boolean);
+  const showTabs = tabs.length > 1;
+  const cur = tabs.includes(tab) ? tab : tabs[0];
   const maxCat = Math.max(1, ...(data.expense_summary || []).map((c) => Number(c.total)));
   const net = Number(data.net || 0);
 
@@ -56,9 +58,10 @@ export default function PublicPage() {
       </header>
       <main className="page" style={{ paddingBottom: 30 }}>
         {showTabs && (
-          <div className="seg">
-            <button className={cur === 'programs' ? 'on' : ''} onClick={() => setTab('programs')}>📅 {t('nav_programs')}</button>
-            <button className={cur === 'accounts' ? 'on' : ''} onClick={() => setTab('accounts')}>📒 {t('accounts')}</button>
+          <div className="seg" data-testid="public-tabs">
+            {tabs.includes('programs') && <button className={cur === 'programs' ? 'on' : ''} onClick={() => setTab('programs')}>📅 {t('nav_programs')}</button>}
+            {tabs.includes('pujas') && <button className={cur === 'pujas' ? 'on' : ''} onClick={() => setTab('pujas')} data-testid="public-tab-puja">🪔 {t('nav_puja')}</button>}
+            {tabs.includes('accounts') && <button className={cur === 'accounts' ? 'on' : ''} onClick={() => setTab('accounts')}>📒 {t('accounts')}</button>}
           </div>
         )}
         {cur === 'programs' && s.programs && (
@@ -66,6 +69,7 @@ export default function PublicPage() {
             ? <Schedule start={b.start_date} end={b.end_date} days={data.days || []} programs={data.programs || []} />
             : <Empty icon="📅" text={t('nothing_here')} />
         )}
+        {cur === 'pujas' && <PujaSchedule start={b.start_date} end={b.end_date} pujas={data.pujas || []} />}
         {cur === 'accounts' && (
           <>
             {s.net_position && (

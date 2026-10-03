@@ -5,49 +5,13 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { inr, fmtDateTime } from '../lib/format.js';
 import { errMsg } from '../lib/errors.js';
-import { REQUIRED_DB_VERSION, getDbVersion, setupSqlText } from '../lib/dbVersion.js';
+import { REQUIRED_DB_VERSION } from '../lib/dbVersion.js';
+import { useDbVersion, DbUpdateNotice } from './DbUpdate.jsx';
 import * as DT from '../lib/dataTools.js';
 import { Field, Modal, Seg, Spinner, Switch, useToast, copyText, PinInput } from './ui.jsx';
 import { isPin } from '../lib/supabase.js';
 
-/** undefined = checking, null = unknown (offline), number = version */
-export function useDbVersion() {
-  const [v, setV] = useState(undefined);
-  const check = useCallback(async () => { setV(undefined); setV(await getDbVersion()); }, []);
-  useEffect(() => { check(); }, [check]);
-  return [v, check];
-}
-
-export function DbUpdateNotice({ version, onCheck }) {
-  const { t } = useLang();
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  if (version === undefined || version === null || version >= REQUIRED_DB_VERSION) return null;
-  const copy = async () => {
-    setBusy(true);
-    try {
-      const sql = await setupSqlText();
-      if (await copyText(sql)) toast(t('db_sql_copied'), 'success', 7000);
-      else toast(t('error_generic'), 'error');
-    } catch (e) { toast(errMsg(e, t), 'error'); }
-    setBusy(false);
-  };
-  return (
-    <div className="alert warn db-update" data-testid="db-update">
-      <b>{t('db_update_title')}</b>
-      <ol>
-        <li>{t('db_update_1')}</li>
-        <li>{t('db_update_2')}</li>
-        <li>{t('db_update_3')}</li>
-      </ol>
-      <span className="hint">{t('db_update_safe')}</span>
-      <div className="row wrap">
-        <button type="button" className="btn maroon sm" disabled={busy} onClick={copy}>{t('db_copy_sql')}</button>
-        <button type="button" className="btn ghost sm" onClick={onCheck}>{t('db_check_again')}</button>
-      </div>
-    </div>
-  );
-}
+export { useDbVersion, DbUpdateNotice };
 
 function useExportCtx() {
   const { lang } = useLang();
@@ -135,7 +99,7 @@ export function ExportCard() {
           </Field>
           <div className="export-counts num" data-testid="export-counts">
             {counts === null ? <Spinner sm /> : counts === false ? t('network_error') : empty ? t('export_none')
-              : t('export_counts', { d: counts.donations, e: counts.expenses, h: counts.handovers, p: counts.programs })}
+              : t('export_counts', { d: counts.donations, e: counts.expenses, h: counts.handovers, p: counts.programs, u: counts.pujas || 0 })}
           </div>
           <div className="grid2">
             <button type="button" className="btn primary" disabled={!!busy || !counts || empty} onClick={doExcel}>
@@ -246,7 +210,7 @@ function DeleteFlow({ onClose, onDeleted }) {
                 <li><span>{t('del_expenses')}</span><b>{c.expenses}{info.expensesTotal ? ` · ${inr(info.expensesTotal)}` : ''}</b></li>
                 <li><span>{t('del_bills')}</span><b>{c.bills}</b></li>
                 <li><span>{t('del_handovers')}</span><b>{c.handovers}</b></li>
-                <li><span>{t('del_programs')}</span><b>{c.programs + c.festival_days}</b></li>
+                <li><span>{t('del_programs')}</span><b>{c.programs + c.festival_days + (c.pujas || 0)}</b></li>
                 <li><span>{t('del_history')}</span><b>{info.history}</b></li>
                 {removeMembers && <li className="bad"><span>{t('del_members')}</span><b>{info.members}</b></li>}
               </ul>
@@ -326,7 +290,7 @@ function DeleteFlow({ onClose, onDeleted }) {
       {step === 3 && result && (
         <div className="stack" data-testid="delete-done">
           <div className="alert ok" style={{ display: 'block' }}>
-            {t('delete_done_text', { d: result.donations, e: result.expenses, h: result.handovers, p: (result.programs || 0) + (result.festival_days || 0), b: result.bills?.removed || 0 })}
+            {t('delete_done_text', { d: result.donations, e: result.expenses, h: result.handovers, p: (result.programs || 0) + (result.festival_days || 0) + (result.pujas || 0), b: result.bills?.removed || 0 })}
             {result.members_removed > 0 && <><br />{t('delete_done_members', { n: result.members_removed })}</>}
             {result.members_blocked > 0 && <><br />{t('delete_done_blocked', { n: result.members_blocked })}</>}
           </div>

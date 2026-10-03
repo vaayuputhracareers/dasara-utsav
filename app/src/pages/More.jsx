@@ -10,6 +10,7 @@ export default function More() {
     ['/handover', '🤝', 'nav_handover', 'more_handover_sub'],
     ['/members', '👥', 'nav_members', 'more_members_sub'],
     ['/programs', '📅', 'nav_programs', 'more_programs_sub'],
+    ['/puja', '🪔', 'nav_puja', 'more_puja_sub'],
     ['/public-page', '📱', 'nav_public', 'more_public_sub'],
     ['/settings', '⚙️', 'nav_settings', 'more_settings_sub'],
     ['/history', '📜', 'nav_history', 'more_history_sub'],

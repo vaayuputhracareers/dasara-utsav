@@ -8,7 +8,7 @@ import { fmtDay } from '../lib/format.js';
 import { Page, Switch, useToast, copyText } from '../components/ui.jsx';
 import { QrImage, qrDataUrl } from '../components/QrImage.jsx';
 
-const SECTIONS = ['show_programs', 'show_donation_total', 'show_donor_list', 'show_donor_amounts', 'show_expense_summary', 'show_expense_details', 'show_net_position'];
+const SECTIONS = ['show_programs', 'show_pujas', 'show_donation_total', 'show_donor_list', 'show_donor_amounts', 'show_expense_summary', 'show_expense_details', 'show_net_position'];
 
 function loadImg(src, cors) {
   return new Promise((res, rej) => { const i = new Image(); if (cors) i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = rej; i.src = src; });
@@ -98,9 +98,9 @@ export default function PublicSettings() {
       </div>
       <div className="section-title">{t('what_visitors_see')}</div>
       <div className="card" style={{ padding: '2px 14px' }}>
-        {SECTIONS.map((k) => (
-          <div key={k} className={`toggle-row ${k === 'show_donor_amounts' ? 'sub' : ''}`}>
-            <span>{t(k)}</span>
+        {SECTIONS.filter((k) => k in settings).map((k) => (
+          <div key={k} className={`toggle-row ${k === 'show_donor_amounts' ? 'sub' : ''}`} data-testid={`toggle-${k}`}>
+            <span>{t(k)}{k === 'show_pujas' && <small className="hint" style={{ display: 'block', fontWeight: 500 }}>{t('show_pujas_hint')}</small>}</span>
             <Switch checked={settings[k]} disabled={k === 'show_donor_amounts' && !settings.show_donor_list} onChange={(v) => toggle(k, v)} />
           </div>
         ))}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
 import { useLang } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -7,8 +7,10 @@ import { useSettings } from '../context/SettingsContext.jsx';
 import { useAsync } from '../lib/useAsync.js';
 import { errMsg } from '../lib/errors.js';
 import { dateRange, fmtDay } from '../lib/format.js';
-import { Page, Spinner, Modal, Field, useToast, Empty } from '../components/ui.jsx';
+import { Page, Spinner, Modal, Field, useToast, Empty, MobileInput } from '../components/ui.jsx';
 import Schedule from '../components/Schedule.jsx';
+import PujaSchedule, { isMissingTable } from '../components/PujaSchedule.jsx';
+import { DbUpdateNotice, useDbVersion } from '../components/DbUpdate.jsx';
 
 export const SAMPLE_ALANKARAMS = [
   { te: 'శ్రీ స్వర్ణ కవచాలంకృత దుర్గా దేవి', en: 'Sri Swarna Kavachalankrita Durga Devi' },
@@ -28,18 +30,24 @@ export default function Programs() {
   const { isAdmin } = useAuth();
   const { settings } = useSettings();
   const toast = useToast();
+  const loc = useLocation();
+  const nav = useNavigate();
+  const tab = loc.pathname.startsWith('/puja') ? 'puja' : 'programs';
   const [dayEdit, setDayEdit] = useState(null);
   const [prog, setProg] = useState(null);
+  const [puja, setPuja] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const { data, loading, reload } = useAsync(async () => {
-    const [d, p] = await Promise.all([
+    const [d, p, u] = await Promise.all([
       supabase.from('festival_days').select('*').order('day_date'),
       supabase.from('programs').select('*').order('program_date').order('start_time'),
+      supabase.from('pujas').select('*').order('puja_date').order('puja_time', { nullsFirst: false }).order('created_at'),
     ]);
     if (d.error) throw d.error;
     if (p.error) throw p.error;
-    return { days: d.data, programs: p.data };
+    if (u.error && !isMissingTable(u.error)) throw u.error;
+    return { days: d.data, programs: p.data, pujas: u.error ? null : u.data };   // pujas null → database before version 5
   }, []);
 
   const range = dateRange(settings.start_date, settings.end_date);
@@ -86,20 +94,129 @@ export default function Programs() {
     setProg(null); reload(true);
   };
 
+  // ---- puja schedule (admin) ----
+  const pujas = data?.pujas || [];
+  const freeDays = range.filter((date) => !pujas.some((x) => x.puja_date === date));                 // no entry at all
+  const hasFamily = (x) => !!String(x.family_name || '').trim();
+  const openDays = range.filter((date) => !pujas.some((x) => x.puja_date === date && hasFamily(x)));  // no family yet
+  const addFestivalDays = async () => {
+    setBusy(true);
+    const { error } = await supabase.from('pujas').insert(freeDays.map((date) => ({
+      puja_date: date, puja_time: null, puja_name: '', family_name: '', village: '', gotram: '', mobile: null, note: '' })));
+    setBusy(false);
+    if (error) return toast(errMsg(error, t), 'error');
+    toast(t('puja_add_days_done', { n: freeDays.length }), 'success', 6000);
+    reload(true);
+  };
+  const newPuja = (date) => setPuja({ puja_date: date || openDays[0] || range[0] || '', puja_time: '', puja_name: '', family_name: '', village: '', gotram: '', mobile: '', note: '' });
+  const editPuja = (x) => setPuja({ ...x, puja_time: (x.puja_time || '').slice(0, 5), mobile: x.mobile || '' });
+  const savePuja = async () => {
+    if (!puja.puja_date) return toast(t('date'), 'error');
+    if (puja.mobile && puja.mobile.length !== 10) return toast(t('mobile_invalid'), 'error');
+    setBusy(true);
+    const row = {
+      puja_date: puja.puja_date, puja_time: puja.puja_time || null, puja_name: puja.puja_name.trim(), family_name: puja.family_name.trim(),
+      village: puja.village.trim(), gotram: puja.gotram.trim(), mobile: puja.mobile || null, note: puja.note.trim(),
+    };
+    // A new family on a day that still has an "Available" entry fills that entry (no "Available" left next to the family).
+    const slot = !puja.id && row.family_name ? pujas.find((x) => x.puja_date === row.puja_date && !hasFamily(x)) : null;
+    if (slot) {
+      row.puja_time = row.puja_time || slot.puja_time || null;
+      row.puja_name = row.puja_name || slot.puja_name || '';
+    }
+    const id = puja.id || slot?.id;
+    const { error } = id ? await supabase.from('pujas').update(row).eq('id', id) : await supabase.from('pujas').insert(row);
+    setBusy(false);
+    if (error) return toast(errMsg(error, t), 'error');
+    setPuja(null); toast(t('saved'), 'success'); reload(true);
+  };
+  const delPuja = async () => {
+    if (!window.confirm(t('delete_puja_confirm'))) return;
+    setBusy(true);
+    const { error } = await supabase.from('pujas').delete().eq('id', puja.id);
+    setBusy(false);
+    if (error) return toast(errMsg(error, t), 'error');
+    setPuja(null); reload(true);
+  };
+  const pujaMissing = !!data && data.pujas === null;
+
   const openDay = (d) => setDayEdit({ day_date: d.date, alankaram_te: d.day?.alankaram_te || '', alankaram_en: d.day?.alankaram_en || '', note_te: d.day?.note_te || '', note_en: d.day?.note_en || '' });
   const newProg = (date) => setProg({ program_date: date || range[0] || '', start_time: '', end_time: '', title_te: '', title_en: '', place: '', details: '' });
   const editProg = (p) => setProg({ ...p, start_time: (p.start_time || '').slice(0, 5), end_time: (p.end_time || '').slice(0, 5) });
 
   return (
-    <Page title={t('nav_programs')} sub={`${L(settings, 'event_title')} ${settings.event_year}`} right={isAdmin ? <button className="tb-btn" onClick={() => newProg()}>{t('add_program')}</button> : null}>
+    <Page title={tab === 'puja' ? t('nav_puja') : t('nav_programs')} sub={`${L(settings, 'event_title')} ${settings.event_year}`}
+      right={!isAdmin ? null : tab === 'puja'
+        ? (pujaMissing ? null : <button className="tb-btn" onClick={() => newPuja()} data-testid="puja-add">{t('add_puja')}</button>)
+        : <button className="tb-btn" onClick={() => newProg()}>{t('add_program')}</button>}>
+      <div className="seg" data-testid="schedule-tabs">
+        <button type="button" className={tab === 'programs' ? 'on' : ''} onClick={() => nav('/programs', { replace: true })}>{t('tab_programs')}</button>
+        <button type="button" className={tab === 'puja' ? 'on' : ''} onClick={() => nav('/puja', { replace: true })} data-testid="tab-puja">{t('tab_puja')}</button>
+      </div>
       {isAdmin && !range.length && <Link to="/settings" className="alert warn">⚙️ {t('set_dates_first')}</Link>}
-      {isAdmin && range.length > 0 && !hasAlank && !loading && (
-        <button className="btn ghost block" disabled={busy} onClick={fillSample}>{t('fill_standard')}</button>
+
+      {tab === 'programs' && (
+        <>
+          {isAdmin && range.length > 0 && !hasAlank && !loading && (
+            <button className="btn ghost block" disabled={busy} onClick={fillSample}>{t('fill_standard')}</button>
+          )}
+          {loading && !data ? <Spinner /> : data && (range.length || data.programs.length) ? (
+            <Schedule start={settings.start_date} end={settings.end_date} days={data.days} programs={data.programs}
+              editable={isAdmin} onEditDay={openDay} onAddProgram={newProg} onEditProgram={editProg} />
+          ) : <Empty icon="📅" text={t('nothing_here')} />}
+        </>
       )}
-      {loading && !data ? <Spinner /> : data && (range.length || data.programs.length) ? (
-        <Schedule start={settings.start_date} end={settings.end_date} days={data.days} programs={data.programs}
-          editable={isAdmin} onEditDay={openDay} onAddProgram={newProg} onEditProgram={editProg} />
-      ) : <Empty icon="📅" text={t('nothing_here')} />}
+
+      {tab === 'puja' && (
+        loading && !data ? <Spinner /> : pujaMissing ? (
+          isAdmin ? <PujaDbUpdate /> : <div className="alert warn" data-testid="puja-db-update">{t('puja_needs_db_member')}</div>
+        ) : data && (
+          <>
+            {isAdmin && range.length > 0 && freeDays.length > 0 && (
+              <button className="btn ghost block" disabled={busy} onClick={addFestivalDays} data-testid="puja-add-days">{t('puja_add_days', { n: freeDays.length })}</button>
+            )}
+            {range.length || pujas.length ? (
+              <PujaSchedule start={settings.start_date} end={settings.end_date} pujas={pujas} team editable={isAdmin} onEdit={editPuja} onAdd={newPuja} />
+            ) : <Empty icon="🪔" text={t('puja_empty')} />}
+          </>
+        )
+      )}
+
+      <Modal open={!!puja} onClose={() => setPuja(null)} title={puja?.id ? t('edit_puja') : t('new_puja')}>
+        {puja && (
+          <div className="stack" data-testid="puja-form">
+            <Field label={t('date')}>
+              {range.length ? (
+                <select className="input" value={puja.puja_date} onChange={(e) => setPuja({ ...puja, puja_date: e.target.value })} data-testid="puja-date">
+                  {[...new Set([...range, puja.puja_date].filter(Boolean))].sort().map((d) => (
+                    <option key={d} value={d}>{range.indexOf(d) >= 0 ? `${t('day_n', { n: range.indexOf(d) + 1 })} · ` : ''}{fmtDay(d, lang)}</option>
+                  ))}
+                </select>
+              ) : <input type="date" className="input" value={puja.puja_date} onChange={(e) => setPuja({ ...puja, puja_date: e.target.value })} data-testid="puja-date" />}
+            </Field>
+            <Field label={t('family_name')} hint={t('family_hint')}>
+              <input className="input" value={puja.family_name} placeholder={t('family_name_ph')} onChange={(e) => setPuja({ ...puja, family_name: e.target.value })} data-testid="puja-family-input" />
+            </Field>
+            <div className="grid2">
+              <Field label={t('puja_name')} optional>
+                <input className="input" value={puja.puja_name} placeholder={t('puja_name_ph')} onChange={(e) => setPuja({ ...puja, puja_name: e.target.value })} data-testid="puja-name-input" />
+              </Field>
+              <Field label={t('time')} optional><input type="time" className="input" value={puja.puja_time} onChange={(e) => setPuja({ ...puja, puja_time: e.target.value })} data-testid="puja-time" /></Field>
+            </div>
+            <Field label={t('village')} optional><input className="input" value={puja.village} onChange={(e) => setPuja({ ...puja, village: e.target.value })} data-testid="puja-village" /></Field>
+            <div className="grid2">
+              <Field label={t('gotram')} optional><input className="input" value={puja.gotram} onChange={(e) => setPuja({ ...puja, gotram: e.target.value })} data-testid="puja-gotram" /></Field>
+              <Field label={t('mobile')} optional><MobileInput className="input num" value={puja.mobile} onChange={(v) => setPuja({ ...puja, mobile: v })} autoComplete="off" data-testid="puja-mobile-input" /></Field>
+            </div>
+            <Field label={t('note')} optional><input className="input" value={puja.note} onChange={(e) => setPuja({ ...puja, note: e.target.value })} data-testid="puja-note-input" /></Field>
+            <p className="hint">🔒 {t('puja_private_hint')}</p>
+            <div className="grid2">
+              {puja.id ? <button className="btn ghost danger-t" disabled={busy} onClick={delPuja} data-testid="puja-delete">🗑️ {t('delete')}</button> : <span />}
+              <button className="btn primary" disabled={busy} onClick={savePuja} data-testid="puja-save">{busy ? t('saving') : t('save')}</button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!dayEdit} onClose={() => setDayEdit(null)} title={dayEdit ? `${t('edit_day_title')} · ${fmtDay(dayEdit.day_date, lang)}` : ''}>
         {dayEdit && (
@@ -143,3 +260,16 @@ export default function Programs() {
     </Page>
   );
 }
+
+/** Admin: the puja schedule needs the version 5 database update (Copy SQL → Supabase → Run → Check again). */
+function PujaDbUpdate() {
+  const { t } = useLang();
+  const [version, check] = useDbVersion();
+  return (
+    <div className="stack" data-testid="puja-db-update">
+      <div className="alert warn">{t('puja_needs_db')}</div>
+      <DbUpdateNotice version={version} onCheck={async () => { await check(); window.location.reload(); }} />
+    </div>
+  );
+}
+
