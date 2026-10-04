@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useLang } from '../lib/i18n.jsx';
 import { dateRange, fmtDay, fmtClock, todayIST } from '../lib/format.js';
+import DayStatus from './DayStatus.jsx';
 
 /** The table is missing until the admin runs the version 5 database update. */
 export const isMissingTable = (e) =>
@@ -46,7 +47,7 @@ export default function PujaSchedule({ start, end, pujas = [], team = false, edi
         return (
           <div key={d.date} className={`day ${isToday ? 'today' : ''} ${past ? 'past' : ''}`} data-testid="puja-day" data-date={d.date}>
             <div className="dayhead" style={{ cursor: 'default' }}>
-              <span>{d.n ? `${t('day_n', { n: d.n })} · ` : ''}{fmtDay(d.date, lang)}{isToday ? ` · ${t('today')}` : ''}</span>
+              <span className="day-title"><span>{d.n ? `${t('day_n', { n: d.n })} · ` : ''}{fmtDay(d.date, lang)}</span><DayStatus date={d.date} today={today} /></span>
             </div>
             <div className="tl">
               {d.pujas.length === 0 && <div className="hint" style={{ padding: '6px 0' }}>{t('puja_none_day')}</div>}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLang } from '../lib/i18n.jsx';
 import { dateRange, fmtDay, fmtClock, todayIST } from '../lib/format.js';
+import DayStatus from './DayStatus.jsx';
 
 export function buildDays(start, end, days = [], programs = []) {
   const range = dateRange(start, end);
@@ -34,7 +35,7 @@ export default function Schedule({ start, end, days, programs, editable, onEditD
         return (
           <div key={d.date} className={`day ${isToday ? 'today' : ''} ${past ? 'past' : ''}`}>
             <div className="dayhead" onClick={() => toggle(d.date)}>
-              <span>{d.n ? `${t('day_n', { n: d.n })} · ` : ''}{fmtDay(d.date, lang)}{isToday ? ` · ${t('today')}` : ''}</span>
+              <span className="day-title"><span>{d.n ? `${t('day_n', { n: d.n })} · ` : ''}{fmtDay(d.date, lang)}</span><DayStatus date={d.date} today={today} /></span>
               <span className="row" style={{ gap: 6 }}>
                 {editable && <button className="btn ghost xs" onClick={(e) => { e.stopPropagation(); onEditDay(d); }}>{t('edit_day')}</button>}
                 <span>{open ? '▴' : '▾'}</span>
