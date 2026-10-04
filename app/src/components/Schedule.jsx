@@ -42,7 +42,7 @@ export default function Schedule({ start, end, days, programs, editable, onEditD
             </div>
             {open && (
               <>
-                {alank && <div className="alank">✨ {alank} {lang === 'te' ? 'అలంకారం' : 'Alankaram'}</div>}
+                {alank && <div className="alank">✨ {alank}</div>}   {/* exactly what the admin typed – no word added */}
                 {note && <div className="daynote">{note}</div>}
                 <div className="tl">
                   {d.programs.length === 0 && <div className="hint" style={{ padding: '6px 0' }}>{t('no_programs_day')}</div>}
