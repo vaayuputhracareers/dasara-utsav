@@ -156,6 +156,7 @@ export function ExpenseForm({ open, onClose, onSaved, edit }) {
 function MemberCashBox({ cash, name, amount, effect }) {
   const { t } = useLang();
   if (!cash) return <div className="cash-box"><Spinner sm /></div>;
+  if (cash.error) return <div className="cash-box neg"><div className="lbl">💵 {t('member_cash_title', { name })}</div><div className="hint">{t('member_cash_error')}</div></div>;
   const bal = Number(cash.balance || 0);
   const after = bal - Number(amount || 0);
   return (
@@ -254,6 +255,11 @@ function ExpenseDetail({ e, onClose, onChanged, onEdit }) {
             {memberExp && (
               <div className="settle-box" data-testid="settle-choice">
                 <div className="card-title" style={{ marginBottom: 6 }}>{t('settle_title', { name: payer })}</div>
+                {cash && !cash.error && (
+                  <div className={`settle-cash num ${Number(cash.balance) < 0 ? 'neg' : ''}`} data-testid="settle-cash">
+                    💵 {t('settle_cash_line', { name: payer, amount: Number(cash.balance) < 0 ? `−${inr(-Number(cash.balance))}` : inr(cash.balance) })}
+                  </div>
+                )}
                 <Seg value={settle === 'setoff' ? 'setoff' : 'payback'} onChange={(v) => setSettle(v === 'setoff' ? 'setoff' : 'cash')}
                   options={[{ value: 'setoff', label: t('settle_setoff') }, { value: 'payback', label: t('settle_payback') }]} />
                 {settle === 'setoff' ? (

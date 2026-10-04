@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
 import { LANG_KEY } from './lib/i18n.jsx';
+import { startUpdateCheck } from './lib/updateCheck.js';
 
 document.documentElement.lang = localStorage.getItem(LANG_KEY) || 'en';
 
@@ -13,6 +14,7 @@ if (BASE !== '/' && window.location.pathname + '/' === BASE) {
 }
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 
+startUpdateCheck();
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => { navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch(() => {}); });
 }

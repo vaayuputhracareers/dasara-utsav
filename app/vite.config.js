@@ -34,6 +34,7 @@ const deployHelpers = {
 
 export default defineConfig({
   base,
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },   // shown in ☰ More (app version)
   plugins: [react(), deployHelpers],
   // fs.allow '..': the admin's "Copy SQL" button bundles ../supabase/setup.sql (loaded on demand)
   server: { host: '0.0.0.0', port: 5173, allowedHosts: true, proxy: devProxy, fs: { allow: ['..'] } },

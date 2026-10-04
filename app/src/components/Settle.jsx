@@ -44,7 +44,8 @@ export function useMemberCash(memberId, enabled = true) {
     setRow(null);
     if (!memberId || !enabled) return undefined;
     supabase.rpc('get_member_balances').then(({ data, error }) => {
-      if (!alive || error) return;
+      if (!alive) return;
+      if (error) { setRow({ member_id: memberId, error: true }); return; }
       const m = (data || []).find((x) => x.member_id === memberId);
       setRow(m || { member_id: memberId, balance: 0, cash_collected: 0, expenses_approved: 0, handed_over: 0 });
     });

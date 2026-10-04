@@ -2,9 +2,10 @@ import { Link } from 'react-router-dom';
 import { useLang } from '../lib/i18n.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { Page } from '../components/ui.jsx';
+import { fmtDateTime } from '../lib/format.js';
 
 export default function More() {
-  const { t, L } = useLang();
+  const { t, L, lang } = useLang();
   const { settings } = useSettings();
   const items = [
     ['/handover', '🤝', 'nav_handover', 'more_handover_sub'],
@@ -24,6 +25,7 @@ export default function More() {
           <Link key={to} to={to}><i>{icon}</i>{t(label)}<small>{t(sub)}</small></Link>
         ))}
       </div>
+      <p className="hint" style={{ textAlign: 'center', marginTop: 14 }} data-testid="app-version">{t('app_version', { when: fmtDateTime(__BUILD_TIME__, lang) })}</p>
     </Page>
   );
 }
