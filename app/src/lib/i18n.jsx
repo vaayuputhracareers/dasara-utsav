@@ -762,6 +762,7 @@ const D = {
   member_cash_after_setoff: ['ఈ ఖర్చు ఆమోదించి సర్దుబాటు చేస్తే: {amount}', 'After approving this expense (set off): {amount}'],
   member_cash_after_payback: ['తిరిగి చెల్లిస్తే నగదు మారదు: {amount}', 'With pay back the cash stays: {amount}'],
   member_cash_short: ['{name} వద్ద తగినంత నగదు లేదు — సర్దుబాటు చేస్తే కమిటీ {name}కు {amount} ఇవ్వాలి. "తిరిగి చెల్లించండి" కూడా ఎంచుకోవచ్చు.', 'Not enough cash with {name} – with set off the committee will owe {name} {amount}. You can choose Pay back instead.'],
+  cash_now_x: ['చేతిలో నగదు {amount}', 'cash {amount}'],
   member_deleted: ['{name} తొలగించబడ్డారు ✅', '{name} deleted ✅'],
   member_deleted_kept: ['{name} తొలగించబడ్డారు ✅ — వారి రసీదులు / ఖర్చులు లెక్కల్లో ఉన్నాయి', '{name} deleted ✅ – their receipts / expenses stay in the accounts'],
   err_member_has_balance: ['ఈ సభ్యుని నగదు బ్యాలెన్స్ ఇంకా సున్నా కాదు — ముందుగా "నగదు అప్పగింత"లో సర్దుబాటు చేయండి', "This member's cash balance is not zero yet – settle it in \"Cash handover\" first"],

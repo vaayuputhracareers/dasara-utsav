@@ -307,6 +307,13 @@ export default function Expenses() {
   }), [isAdmin, profile.id]);
 
   useEffect(() => { if (isAdmin && data && tab === 'pending' && !data.some((e) => e.status === 'pending')) setTab('approved'); }, [data]); // eslint-disable-line
+  // admin: each member's cash right now, shown on pending expenses (refreshed with the list)
+  const { data: cashNow } = useAsync(async () => {
+    if (!isAdmin) return {};
+    const { data: rows, error } = await supabase.rpc('get_member_balances');
+    if (error) return {};
+    return Object.fromEntries((rows || []).map((m) => [m.member_id, Number(m.balance || 0)]));
+  }, [isAdmin, data]);
   const counts = useMemo(() => ({ pending: (data || []).filter((e) => e.status === 'pending').length }), [data]);
   const list = useMemo(() => (data || []).filter((e) => tab === 'all' || e.status === tab), [data, tab]);
   const total = list.reduce((a, e) => a + Number(e.amount), 0);
@@ -340,7 +347,8 @@ export default function Expenses() {
                   <div style={{ marginTop: 3 }}>
                     <StatusBadge s={e.status} />
                     {isAdmin && <span className="badge grey">{personName(e.creator, lang)}</span>}
-                    {e.payer && <span className="badge blue">💵 {personName(e.payer, lang)}</span>}
+                    {e.payer && <span className="badge blue">💵 {personName(e.payer, lang)}{isAdmin && e.status === 'pending' && cashNow && cashNow[e.paid_by] !== undefined
+                      ? ` · ${t('cash_now_x', { amount: cashNow[e.paid_by] < 0 ? `−${inr(-cashNow[e.paid_by])}` : inr(cashNow[e.paid_by]) })}` : ''}</span>}
                     <SettleBadge e={e} />
                     {e.bill_path && <span className="badge grey">📷</span>}
                   </div>
