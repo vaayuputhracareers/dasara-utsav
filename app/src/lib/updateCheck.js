@@ -17,7 +17,7 @@ async function check() {
   busy = true;
   last = Date.now();
   try {
-    const html = await (await fetch(`${BASE}index.html?v=${Date.now()}`, { cache: 'no-store' })).text();
+    const html = await latestPage();
     const m = html.match(/src="([^"]*\/assets\/index-[^"]+\.js)"/);
     if (m && new URL(m[1], location.href).pathname !== cur) show();
   } catch { /* offline – try again later */ }
@@ -53,5 +53,20 @@ export async function hardUpdate() {
     const keys = (await window.caches?.keys?.()) || [];
     await Promise.all(keys.map((k) => caches.delete(k)));
   } catch { /* ignore – still reload */ }
-  location.replace(`${BASE}?v=${Date.now()}`);
+  location.replace(`${BASE}__latest/${Date.now()}`);   // a brand-new address – never an old stored copy
+}
+
+/** The website's newest start page. A brand-new address every time, so no stored copy can be handed back
+ *  (GitHub Pages keeps "/" for 10 minutes and ignores "?v=…"; unknown addresses return 404.html = index.html). */
+export async function latestPage() {
+  const res = await fetch(`${BASE}__latest/${Date.now()}`, { cache: 'no-store', credentials: 'same-origin' });
+  return res.text();
+}
+
+/** Build time of the newest version on the website ('' if unknown). */
+export async function latestBuild() {
+  try {
+    const m = (await latestPage()).match(/<meta name="app-build" content="([^"]+)"/);
+    return m ? m[1] : '';
+  } catch { return ''; }
 }

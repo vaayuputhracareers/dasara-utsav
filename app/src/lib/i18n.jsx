@@ -768,6 +768,8 @@ const D = {
   app_version: ['యాప్ వెర్షన్: {when}', 'App version: {when}'],
   update_now: ['🔄 యాప్‌ను ఇప్పుడే అప్‌డేట్ చేయండి', '🔄 Update app now'],
   update_now_hint: ['మార్పులు కనిపించకపోతే నొక్కండి — ఫోన్‌లో ఉన్న పాత కాపీ తీసివేసి కొత్త వెర్షన్ తెరుస్తుంది', "Tap if a change doesn't show – removes the old copy saved on this phone and opens the newest version"],
+  is_latest: ['ఇది తాజా వెర్షన్', 'This is the latest version'],
+  newer_version: ['వెబ్‌సైట్‌లో కొత్త వెర్షన్ ఉంది ({when}) — కింద "యాప్‌ను ఇప్పుడే అప్‌డేట్ చేయండి" నొక్కండి', 'A newer version is on the website ({when}) – tap "Update app now" below'],
   day_completed: ['పూర్తయింది', 'Completed'],
   day_today: ['ఈరోజు', 'Today'],
   day_upcoming: ['రాబోయేది', 'Upcoming'],
