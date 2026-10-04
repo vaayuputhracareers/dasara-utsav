@@ -31,12 +31,15 @@ const deployHelpers = {
   writeBundle(opts) {
     const dir = opts.dir;
     if (dir && existsSync(join(dir, 'index.html'))) copyFileSync(join(dir, 'index.html'), join(dir, '404.html'));
+    // The offline helper gets a new file name on every build (sw-<build>.js): GitHub Pages keeps fixed
+    // addresses such as /sw.js in its own store for a while, a new name always comes fresh.
+    if (dir && existsSync(join(dir, 'sw.js'))) copyFileSync(join(dir, 'sw.js'), join(dir, `sw-${buildId}.js`));
   },
 };
 
 export default defineConfig({
   base,
-  define: { __BUILD_TIME__: JSON.stringify(buildTime) },   // shown in ☰ More (app version)
+  define: { __BUILD_TIME__: JSON.stringify(buildTime), __BUILD_ID__: JSON.stringify(buildId) },   // shown in ☰ More (app version)
   plugins: [react(), deployHelpers],
   // fs.allow '..': the admin's "Copy SQL" button bundles ../supabase/setup.sql (loaded on demand)
   server: { host: '0.0.0.0', port: 5173, allowedHosts: true, proxy: devProxy, fs: { allow: ['..'] } },
