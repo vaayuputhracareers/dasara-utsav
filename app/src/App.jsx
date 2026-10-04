@@ -26,6 +26,8 @@ const History = lazy(() => import('./pages/History.jsx'));
 const CashBank = lazy(() => import('./pages/CashBank.jsx'));
 const PublicPage = lazy(() => import('./pages/PublicPage.jsx'));
 const ReceiptView = lazy(() => import('./pages/ReceiptView.jsx'));
+const Festival = lazy(() => import('./pages/Festival.jsx'));   // version 12 – photos, saree donors, saree auction
+const AllList = lazy(() => import('./pages/AllList.jsx'));     // version 12 – members: all donations / all expenses
 
 // "/dasara-utsav/" when hosted at https://<user>.github.io/dasara-utsav/, otherwise "/".
 // The trailing "/" keeps the home address inside the installed app's scope.
@@ -59,6 +61,11 @@ function Private() {
             <Route path="/programs" element={<Programs />} />
             <Route path="/puja" element={<Programs />} />
             <Route path="/me" element={<Me />} />
+            <Route path="/photos" element={<Festival />} />
+            <Route path="/sarees" element={<Festival />} />
+            <Route path="/auction" element={<Festival />} />
+            <Route path="/all-donations" element={<AllList />} />
+            <Route path="/all-expenses" element={<AllList />} />
             {isAdmin && (
               <>
                 <Route path="/handover" element={<Handover />} />

@@ -9,7 +9,7 @@ import { QrImage } from '../components/QrImage.jsx';
 import { DbUpdateNotice, useDbVersion } from '../components/DbUpdate.jsx';
 import { POSTER_ITEMS, resolvePoster, posterToSave, drawPoster, posterFile } from '../lib/poster.js';
 
-const SECTIONS = ['show_programs', 'show_pujas', 'show_donation_total', 'show_donor_list', 'show_donor_amounts', 'show_expense_summary', 'show_expense_details', 'show_net_position'];
+const SECTIONS = ['show_programs', 'show_pujas', 'show_photos', 'show_saree_donors', 'show_auction', 'show_donation_total', 'show_donor_list', 'show_donor_amounts', 'show_expense_summary', 'show_expense_details', 'show_net_position'];
 
 const canShareFiles = (() => {
   try { return !!navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.png', { type: 'image/png' })] }); } catch { return false; }
@@ -204,7 +204,7 @@ export default function PublicSettings() {
       <div className="card" style={{ padding: '2px 14px' }}>
         {SECTIONS.filter((k) => k in settings).map((k) => (
           <div key={k} className={`toggle-row ${k === 'show_donor_amounts' ? 'sub' : ''}`} data-testid={`toggle-${k}`}>
-            <span>{t(k)}{k === 'show_pujas' && <small className="hint" style={{ display: 'block', fontWeight: 500 }}>{t('show_pujas_hint')}</small>}</span>
+            <span>{t(k)}{k === 'show_pujas' && <small className="hint" style={{ display: 'block', fontWeight: 500 }}>{t('show_pujas_hint')}</small>}{(k === 'show_saree_donors' || k === 'show_auction') && <small className="hint" style={{ display: 'block', fontWeight: 500 }}>{t('fest_public_hint')}</small>}</span>
             <Switch checked={settings[k]} disabled={k === 'show_donor_amounts' && !settings.show_donor_list} onChange={(v) => toggle(k, v)} />
           </div>
         ))}

@@ -51,8 +51,8 @@ export default function MemberHome() {
             <div className="card fin-card" data-testid="finance-card">
               <div className="card-title">{t('finance_title')}</div>
               <div className="mini">
-                <div><small>{t('total_donations')}</small><b data-testid="fin-donations">{inr(fin.donations_total)}</b></div>
-                <div><small>{t('total_expenses')}</small><b style={{ color: 'var(--kumkum)' }} data-testid="fin-expenses">{inr(fin.expenses_total)}</b></div>
+                <Link to="/all-donations" data-testid="fin-donations-link"><small>{t('total_donations')}</small><b data-testid="fin-donations">{inr(fin.donations_total)}</b><em>{t('tap_for_list')}</em></Link>
+                <Link to="/all-expenses" data-testid="fin-expenses-link"><small>{t('total_expenses')}</small><b style={{ color: 'var(--kumkum)' }} data-testid="fin-expenses">{inr(fin.expenses_total)}</b><em>{t('tap_for_list')}</em></Link>
                 <div><small>{t('finance_balance')}</small><b style={{ color: finNet >= 0 ? 'var(--green)' : 'var(--kumkum)' }} data-testid="fin-net">{inrSigned(finNet)}</b></div>
               </div>
               {hasCashBank(fin) && (
@@ -75,6 +75,11 @@ export default function MemberHome() {
       <div className="grid2">
         <Link to="/donations" className="btn ghost block">{t('my_receipts_btn')}</Link>
         <Link to="/expenses?new=1" className="btn ghost block">{t('add_expense_btn')}</Link>
+      </div>
+      <div className="grid3 fest-links" data-testid="fest-links">
+        <Link to="/photos" className="btn ghost block">📷 {t('nav_photos')}</Link>
+        <Link to="/sarees" className="btn ghost block">🥻 {t('nav_sarees')}</Link>
+        <Link to="/auction" className="btn ghost block">🔨 {t('nav_auction')}</Link>
       </div>
       <div className="section-title">{t('handover_history')}</div>
       <div className="card">

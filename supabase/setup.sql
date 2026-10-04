@@ -15,8 +15,11 @@
 --    • festival_days / programs – schedule & alankaram
 --    • pujas           – puja schedule: which family does the puja on which day
 --    • cash_transfers  – opening balance + cash deposited into / withdrawn from the bank
+--    • photos          – day-wise festival photos
+--    • saree_donors    – devotees who gave sarees (with a picture)
+--    • saree_auction   – saree auction: saree, starting rate, bidder, final rate, picture
 --    • audit_log       – history of every important change
---    • storage buckets – 'bills' (private) and 'assets' (logo + splash picture, public)
+--    • storage buckets – 'bills' (private) and 'assets' (logo, splash, photos and saree pictures – public)
 --  Security: Row Level Security is ON for every table.
 -- =====================================================================
 
@@ -129,6 +132,10 @@ alter table public.app_settings add column if not exists qr_poster jsonb not nul
   check (jsonb_typeof(qr_poster) = 'object');
 -- Added in version 7 – team members may see the committee's financial position (Members page switch).
 alter table public.app_settings add column if not exists members_see_finance boolean not null default false;
+-- Added in version 12 – photos, saree donors and the saree auction on the public page.
+alter table public.app_settings add column if not exists show_photos       boolean not null default true;
+alter table public.app_settings add column if not exists show_saree_donors boolean not null default true;
+alter table public.app_settings add column if not exists show_auction      boolean not null default true;
 insert into public.app_settings (id) values (1) on conflict (id) do nothing;
 
 create table if not exists public.handovers (
@@ -278,6 +285,52 @@ alter table public.cash_transfers drop constraint if exists cash_transfers_kind_
 alter table public.cash_transfers add constraint cash_transfers_kind_check
   check (kind in ('deposit', 'withdrawal', 'opening_cash', 'opening_bank'));
 
+-- Added in version 12 – day-wise photos, saree donors and the saree auction.
+-- The admin writes them; team members see them in the app and visitors on the public page.
+-- Mobile numbers, notes and "paid" are for the team only (never on the public page).
+create table if not exists public.photos (
+  id          uuid primary key default gen_random_uuid(),
+  photo_date  date not null default ((now() at time zone 'Asia/Kolkata')::date),
+  caption     text not null default '',
+  image_path  text not null,
+  created_by  uuid references public.profiles(id) on delete set null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create table if not exists public.saree_donors (
+  id             uuid primary key default gen_random_uuid(),
+  given_date     date not null default ((now() at time zone 'Asia/Kolkata')::date),
+  donor_name     text not null check (length(btrim(donor_name)) > 0),
+  village        text not null default '',
+  mobile         text check (mobile is null or mobile ~ '^[0-9]{10}$'),
+  saree_details  text not null default '',
+  image_path     text not null default '',
+  note           text not null default '',
+  created_by     uuid references public.profiles(id) on delete set null,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
+create table if not exists public.saree_auction (
+  id              uuid primary key default gen_random_uuid(),
+  auction_date    date not null default ((now() at time zone 'Asia/Kolkata')::date),
+  saree_no        text not null default '',
+  saree_details   text not null default '',
+  image_path      text not null default '',
+  saree_donor_id  uuid references public.saree_donors(id) on delete set null,   -- the donated saree (optional)
+  base_rate       numeric(12,2) check (base_rate is null or base_rate >= 0),     -- starting rate
+  bidder_name     text not null default '',
+  bidder_village  text not null default '',
+  bidder_mobile   text check (bidder_mobile is null or bidder_mobile ~ '^[0-9]{10}$'),
+  bid_amount      numeric(12,2) check (bid_amount is null or bid_amount >= 0),   -- final rate (winning bid)
+  paid            boolean not null default false,
+  note            text not null default '',
+  created_by      uuid references public.profiles(id) on delete set null,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
 create table if not exists public.audit_log (
   id         bigint generated always as identity primary key,
   at         timestamptz not null default now(),
@@ -301,6 +354,9 @@ create index if not exists cash_transfers_date_idx    on public.cash_transfers (
 create unique index if not exists cash_transfers_opening_once on public.cash_transfers (kind)
   where kind in ('opening_cash', 'opening_bank');
 create index if not exists audit_at_idx               on public.audit_log (at desc);
+create index if not exists photos_date_idx            on public.photos (photo_date, created_at);
+create index if not exists saree_donors_date_idx      on public.saree_donors (given_date, created_at);
+create index if not exists saree_auction_date_idx     on public.saree_auction (auction_date, created_at);
 
 -- ---------------------------------------------------------------------
 -- 2. HELPER FUNCTIONS
@@ -534,6 +590,15 @@ end $$;
 drop trigger if exists pujas_touch on public.pujas;
 create trigger pujas_touch before update on public.pujas
   for each row execute function public.touch_updated_at();
+drop trigger if exists photos_touch on public.photos;
+create trigger photos_touch before update on public.photos
+  for each row execute function public.touch_updated_at();
+drop trigger if exists saree_donors_touch on public.saree_donors;
+create trigger saree_donors_touch before update on public.saree_donors
+  for each row execute function public.touch_updated_at();
+drop trigger if exists saree_auction_touch on public.saree_auction;
+create trigger saree_auction_touch before update on public.saree_auction
+  for each row execute function public.touch_updated_at();
 
 -- 3c. Donation: receipt number, token, collector are set by the server
 create or replace function public.donations_before_insert() returns trigger
@@ -723,6 +788,9 @@ alter table public.festival_days  enable row level security;
 alter table public.programs       enable row level security;
 alter table public.pujas          enable row level security;
 alter table public.cash_transfers enable row level security;
+alter table public.photos         enable row level security;
+alter table public.saree_donors   enable row level security;
+alter table public.saree_auction  enable row level security;
 alter table public.audit_log      enable row level security;
 alter table public.receipt_counter enable row level security;   -- no policies: only server functions touch it
 
@@ -801,6 +869,20 @@ drop policy if exists transfers_admin on public.cash_transfers;
 create policy transfers_admin on public.cash_transfers for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
+-- photos, saree donors, saree auction (version 12): every team member sees them, only the admin writes them
+drop policy if exists photos_select on public.photos;
+create policy photos_select on public.photos for select to authenticated using (public.is_active_user());
+drop policy if exists photos_write on public.photos;
+create policy photos_write on public.photos for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists saree_donors_select on public.saree_donors;
+create policy saree_donors_select on public.saree_donors for select to authenticated using (public.is_active_user());
+drop policy if exists saree_donors_write on public.saree_donors;
+create policy saree_donors_write on public.saree_donors for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists saree_auction_select on public.saree_auction;
+create policy saree_auction_select on public.saree_auction for select to authenticated using (public.is_active_user());
+drop policy if exists saree_auction_write on public.saree_auction;
+create policy saree_auction_write on public.saree_auction for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
 -- audit log (admin read only)
 drop policy if exists audit_select on public.audit_log;
 create policy audit_select on public.audit_log for select to authenticated
@@ -811,7 +893,7 @@ grant usage on schema public to anon, authenticated;
 revoke all on all tables in schema public from anon;
 grant select, insert, update, delete on public.profiles, public.member_invites, public.app_settings,
   public.handovers, public.donations, public.expenses, public.festival_days, public.programs,
-  public.pujas, public.cash_transfers, public.audit_log to authenticated;
+  public.pujas, public.cash_transfers, public.audit_log, public.photos, public.saree_donors, public.saree_auction to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 5. FUNCTIONS CALLED BY THE APP
@@ -855,7 +937,8 @@ begin
             'donor_list', s.show_donor_list, 'donor_amounts', s.show_donor_amounts,
             'expense_summary', s.show_expense_summary, 'expense_details', s.show_expense_details,
             'net_position', s.show_net_position, 'pujas', s.show_pujas,
-            'donate', s.show_donate and s.upi_id <> ''));
+            'donate', s.show_donate and s.upi_id <> '',
+            'photos', s.show_photos, 'saree_donors', s.show_saree_donors, 'auction', s.show_auction));
 
   if s.show_programs then
     r := r || jsonb_build_object(
@@ -873,6 +956,27 @@ begin
           'family_name', p.family_name, 'village', p.village,
           'puja_name_te', p.puja_name_te, 'family_name_te', p.family_name_te, 'village_te', p.village_te)
           order by p.puja_date, p.puja_time nulls last, p.created_at) from public.pujas p), '[]'::jsonb));
+  end if;
+  if s.show_photos then   -- version 12: day-wise photos
+    r := r || jsonb_build_object('photos', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', x.id, 'photo_date', x.photo_date, 'caption', x.caption, 'image_path', x.image_path)
+        order by x.photo_date desc, x.created_at) from public.photos x), '[]'::jsonb));
+  end if;
+  if s.show_saree_donors then   -- version 12: never the mobile number or the note
+    r := r || jsonb_build_object('saree_donors', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', x.id, 'given_date', x.given_date, 'donor_name', x.donor_name, 'village', x.village,
+        'saree_details', x.saree_details, 'image_path', x.image_path)
+        order by x.given_date desc, x.created_at desc) from public.saree_donors x), '[]'::jsonb));
+  end if;
+  if s.show_auction then   -- version 12: never the bidder's mobile, the note or "paid"
+    r := r || jsonb_build_object('auction', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', a.id, 'auction_date', a.auction_date, 'saree_no', a.saree_no,
+        'saree_details', coalesce(nullif(a.saree_details, ''), d.saree_details, ''),
+        'image_path', coalesce(nullif(a.image_path, ''), d.image_path, ''),
+        'donor_name', coalesce(d.donor_name, ''), 'base_rate', a.base_rate,
+        'bidder_name', a.bidder_name, 'bidder_village', a.bidder_village, 'bid_amount', a.bid_amount)
+        order by a.auction_date, a.created_at)
+      from public.saree_auction a left join public.saree_donors d on d.id = a.saree_donor_id), '[]'::jsonb));
   end if;
   if s.show_donate and s.upi_id <> '' then   -- "Donate" button: pays the temple UPI ID with any UPI app
     r := r || jsonb_build_object('donate', jsonb_build_object(
@@ -1138,6 +1242,42 @@ begin
     || public.cash_position_internal();   -- version 9: members see cash in hand / cash at bank too
 end $$;
 
+-- Version 12 – team members tap "Total donations" / "Total expenses" (financial position card) and see every
+-- receipt (cancelled ones not included) / every approved expense. Only while the admin allows the financial position.
+create or replace function public.get_all_donations() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not public.is_active_user() then raise exception 'not_allowed'; end if;
+  if not public.is_admin() and not coalesce((select members_see_finance from public.app_settings where id = 1), false) then
+    raise exception 'not_allowed';
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object(
+      'id', d.id, 'receipt_no', d.receipt_no, 'donor_name', d.donor_name, 'village', d.village,
+      'amount', d.amount, 'payment_mode', d.payment_mode, 'purpose_te', d.purpose_te, 'purpose_en', d.purpose_en,
+      'collected_at', d.collected_at,
+      'collector_te', coalesce(nullif(p.name_te, ''), p.full_name), 'collector_en', coalesce(nullif(p.full_name, ''), p.name_te))
+      order by d.collected_at desc)
+    from public.donations d left join public.profiles p on p.id = d.collected_by
+    where d.status = 'active'), '[]'::jsonb);
+end $$;
+
+create or replace function public.get_all_expenses() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not public.is_active_user() then raise exception 'not_allowed'; end if;
+  if not public.is_admin() and not coalesce((select members_see_finance from public.app_settings where id = 1), false) then
+    raise exception 'not_allowed';
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object(
+      'id', e.id, 'expense_date', e.expense_date, 'category_te', e.category_te, 'category_en', e.category_en,
+      'description', e.description, 'paid_to', e.paid_to, 'amount', e.amount, 'payment_mode', e.payment_mode,
+      'paid_by_te', case when e.paid_by is null then null else coalesce(nullif(p.name_te, ''), p.full_name) end,
+      'paid_by_en', case when e.paid_by is null then null else coalesce(nullif(p.full_name, ''), p.name_te) end)
+      order by e.expense_date desc, e.created_at desc)
+    from public.expenses e left join public.profiles p on p.id = e.paid_by
+    where e.status = 'approved'), '[]'::jsonb);
+end $$;
+
 create or replace function public.create_member_invite(p_mobile text, p_full_name text, p_name_te text, p_role text)
 returns text language plpgsql security definer set search_path = '' as $$
 declare v_mobile text := public.normalize_mobile(p_mobile);
@@ -1246,8 +1386,10 @@ end $$;
 --   2 = data tools (export / delete)   3 = 6-digit PIN reset + logo upload permission   4 = splash screen
 --   5 = puja schedule   6 = "Donate" (UPI) on the public page, QR poster editor, Telugu names in the schedules
 --   7 = member expenses paid back by the admin (cash / temple UPI), members may see the financial position
+--   8–11 = cash in hand / bank, opening balance, deleting members
+--   12 = day-wise photos, saree donors, saree auction, members see all donations / expenses
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 11 $$;
+language sql immutable set search_path = '' as $$ select 12 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1261,6 +1403,7 @@ declare
   v_fails int;
   v_counts jsonb;
   v_bills jsonb;
+  v_images jsonb;
   v_removed int := 0;
   v_blocked int := 0;
 begin
@@ -1282,6 +1425,10 @@ begin
   perform pg_advisory_xact_lock(hashtext('utsav_delete_all_data'));
   select coalesce(jsonb_agg(bill_path), '[]'::jsonb) into v_bills
     from public.expenses where coalesce(bill_path, '') <> '';
+  select coalesce(jsonb_agg(x.p), '[]'::jsonb) into v_images from (   -- version 12: pictures, removed by the app
+    select image_path as p from public.photos where image_path <> ''
+    union select image_path from public.saree_donors where image_path <> ''
+    union select image_path from public.saree_auction where image_path <> '') x;
   v_counts := jsonb_build_object(
     'donations',       (select count(*) from public.donations),
     'donations_total', coalesce((select sum(amount) from public.donations where status = 'active'), 0),
@@ -1292,6 +1439,9 @@ begin
     'festival_days',   (select count(*) from public.festival_days),
     'pujas',           (select count(*) from public.pujas),
     'transfers',       (select count(*) from public.cash_transfers),
+    'photos',          (select count(*) from public.photos),
+    'saree_donors',    (select count(*) from public.saree_donors),
+    'saree_auction',   (select count(*) from public.saree_auction),
     'history',         (select count(*) from public.audit_log));
 
   delete from public.donations where true;      -- "where true": allowed even where DELETE-without-WHERE is blocked
@@ -1301,6 +1451,9 @@ begin
   delete from public.festival_days where true;
   delete from public.pujas where true;
   delete from public.cash_transfers where true;
+  delete from public.saree_auction where true;   -- version 12
+  delete from public.saree_donors where true;
+  delete from public.photos where true;
   delete from public.audit_log where true;
   update public.receipt_counter set last_no = 0 where id = 1;
 
@@ -1320,7 +1473,7 @@ begin
 
   v_counts := v_counts || jsonb_build_object('members_removed', v_removed, 'members_blocked', v_blocked);
   perform public.write_audit('data_deleted', 'all', null, v_counts);
-  return v_counts || jsonb_build_object('ok', true, 'bill_paths', v_bills);
+  return v_counts || jsonb_build_object('ok', true, 'bill_paths', v_bills, 'image_paths', v_images);
 end $$;
 
 -- Settings → Export data writes a line in the history, so "Delete data" can warn when a year
@@ -1362,6 +1515,8 @@ revoke execute on function public.admin_delete_member(uuid) from public, anon;
 grant execute on function public.admin_delete_member(uuid) to authenticated;
 revoke execute on function public.settle_expense(uuid, text, text), public.get_finance_summary() from public, anon;
 grant execute on function public.settle_expense(uuid, text, text), public.get_finance_summary() to authenticated;
+revoke execute on function public.get_all_donations(), public.get_all_expenses() from public, anon;
+grant execute on function public.get_all_donations(), public.get_all_expenses() to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 6. FILE STORAGE (bill photos = private, logo = public)

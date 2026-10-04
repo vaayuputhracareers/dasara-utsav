@@ -7,6 +7,7 @@ import { Spinner, Empty } from '../components/ui.jsx';
 import Schedule from '../components/Schedule.jsx';
 import PujaSchedule from '../components/PujaSchedule.jsx';
 import DonateCard from '../components/DonateCard.jsx';
+import { PhotoDays, SareeDonorList, AuctionList, PictureViewer, auctionView, picturesOf, photoItem, donorItem, lotItem } from '../components/Festival.jsx';
 
 const COLORS = ['#7a1d1d', '#ef7d1a', '#f6c344', '#c62828', '#16804a', '#9a3412', '#6d28d9', '#0e7490', '#a16207', '#be185d'];
 
@@ -16,6 +17,7 @@ export default function PublicPage() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(false);
   const [tab, setTab] = useState('programs');
+  const [viewer, setViewer] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -41,7 +43,11 @@ export default function PublicPage() {
   const b = data.branding || {};
   const s = data.sections || {};
   const hasAccounts = s.donation_total || s.net_position || s.expense_summary || s.expense_details || s.donor_list;
-  const tabs = [s.programs && 'programs', s.pujas && data.pujas?.length > 0 && 'pujas', hasAccounts && 'accounts'].filter(Boolean);
+  const photos = data.photos || [];
+  const sarees = data.saree_donors || [];
+  const lots = (data.auction || []).map(auctionView);
+  const tabs = [s.programs && 'programs', s.pujas && data.pujas?.length > 0 && 'pujas', s.photos && photos.length > 0 && 'photos',
+    s.saree_donors && sarees.length > 0 && 'sarees', s.auction && lots.length > 0 && 'auction', hasAccounts && 'accounts'].filter(Boolean);
   const showTabs = tabs.length > 1;
   const cur = tabs.includes(tab) ? tab : tabs[0];
   const maxCat = Math.max(1, ...(data.expense_summary || []).map((c) => Number(c.total)));
@@ -60,9 +66,12 @@ export default function PublicPage() {
       <main className="page" style={{ paddingBottom: 30 }}>
         {s.donate && data.donate?.upi_id && <DonateCard donate={data.donate} branding={b} />}
         {showTabs && (
-          <div className="seg" data-testid="public-tabs">
+          <div className={`seg ${tabs.length > 3 ? 'scroll' : ''}`} data-testid="public-tabs">
             {tabs.includes('programs') && <button className={cur === 'programs' ? 'on' : ''} onClick={() => setTab('programs')}>📅 {t('nav_programs')}</button>}
             {tabs.includes('pujas') && <button className={cur === 'pujas' ? 'on' : ''} onClick={() => setTab('pujas')} data-testid="public-tab-puja">🪔 {t('nav_puja')}</button>}
+            {tabs.includes('photos') && <button className={cur === 'photos' ? 'on' : ''} onClick={() => setTab('photos')} data-testid="public-tab-photos">📷 {t('nav_photos')}</button>}
+            {tabs.includes('sarees') && <button className={cur === 'sarees' ? 'on' : ''} onClick={() => setTab('sarees')} data-testid="public-tab-sarees">🥻 {t('nav_sarees')}</button>}
+            {tabs.includes('auction') && <button className={cur === 'auction' ? 'on' : ''} onClick={() => setTab('auction')} data-testid="public-tab-auction">🔨 {t('nav_auction')}</button>}
             {tabs.includes('accounts') && <button className={cur === 'accounts' ? 'on' : ''} onClick={() => setTab('accounts')}>📒 {t('accounts')}</button>}
           </div>
         )}
@@ -72,6 +81,9 @@ export default function PublicPage() {
             : <Empty icon="📅" text={t('nothing_here')} />
         )}
         {cur === 'pujas' && <PujaSchedule start={b.start_date} end={b.end_date} pujas={data.pujas || []} />}
+        {cur === 'photos' && <PhotoDays photos={photos} onOpen={(list, i) => setViewer({ items: list.map((p) => photoItem(p, lang)), index: i })} />}
+        {cur === 'sarees' && <SareeDonorList items={sarees} onPicture={(d) => setViewer(picturesOf(sarees, d, (x) => donorItem(x, lang)))} />}
+        {cur === 'auction' && <AuctionList items={lots} onPicture={(a) => setViewer(picturesOf(lots, a, (x) => lotItem(x, lang, t)))} />}
         {cur === 'accounts' && (
           <>
             {s.net_position && (
@@ -136,6 +148,7 @@ export default function PublicPage() {
         )}
         {b.contact_phone && <a className="btn ghost block" href={`tel:${b.contact_phone}`}>📞 {t('contact')}: {b.contact_phone}</a>}
         <p className="foot-note">{t('powered_by')} · {L(b, 'committee_name')}</p>
+        {viewer && <PictureViewer items={viewer.items} index={viewer.index} onIndex={(i) => setViewer((v) => ({ ...v, index: i }))} onClose={() => setViewer(null)} />}
       </main>
     </div>
   );

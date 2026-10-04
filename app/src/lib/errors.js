@@ -14,6 +14,7 @@ export function errMsg(e, t) {
   if (/Password should be at least|weak.password|Password should contain|easy to guess|pwned/i.test(m)) return t('err_weak_pin');
   if (/reauthenticat/i.test(m)) return t('err_relogin');
   if (/same_password|should be different from the old/i.test(m)) return t('err_same_pin');
+  if (/Could not find the (table|function)|schema cache/i.test(m)) return t('err_db_update_needed');
   if (/row-level security|permission denied/i.test(m)) return t('err_not_allowed');
   return m && m !== '{}' ? m : t('error_generic');
 }
