@@ -3,6 +3,7 @@ import { useLang } from '../lib/i18n.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { Page } from '../components/ui.jsx';
 import { fmtDateTime } from '../lib/format.js';
+import { hardUpdate } from '../lib/updateCheck.js';
 
 export default function More() {
   const { t, L, lang } = useLang();
@@ -26,6 +27,8 @@ export default function More() {
         ))}
       </div>
       <p className="hint" style={{ textAlign: 'center', marginTop: 14 }} data-testid="app-version">{t('app_version', { when: fmtDateTime(__BUILD_TIME__, lang) })}</p>
+      <button type="button" className="btn ghost block" style={{ marginTop: 6 }} onClick={hardUpdate} data-testid="update-now">{t('update_now')}</button>
+      <p className="hint" style={{ textAlign: 'center', marginTop: 4 }}>{t('update_now_hint')}</p>
     </Page>
   );
 }

@@ -33,11 +33,7 @@ function show() {
   bar.innerHTML = `<span>🔄 ${te ? 'యాప్ కొత్త వెర్షన్ వచ్చింది' : 'A new version of the app is ready'}</span>`
     + `<button type="button">${te ? 'అప్‌డేట్' : 'Update'}</button>`;
   const btn = bar.querySelector('button');
-  btn.addEventListener('click', async () => {
-    btn.disabled = true;
-    try { await Promise.all([fetch(location.href, { cache: 'reload' }), fetch(`${BASE}index.html`, { cache: 'reload' })]); } catch { /* ignore */ }
-    location.reload();
-  });
+  btn.addEventListener('click', () => { btn.disabled = true; hardUpdate(); });
   document.body.appendChild(bar);
 }
 
@@ -47,4 +43,15 @@ export function startUpdateCheck() {
   window.addEventListener('focus', check);
   setInterval(check, 5 * 60 * 1000);
   setTimeout(check, 10000);
+}
+
+/** Removes the saved copy of the app (offline cache + service worker) and opens the newest version. */
+export async function hardUpdate() {
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+    await Promise.all(regs.map((r) => r.unregister()));
+    const keys = (await window.caches?.keys?.()) || [];
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch { /* ignore – still reload */ }
+  location.replace(`${BASE}?v=${Date.now()}`);
 }

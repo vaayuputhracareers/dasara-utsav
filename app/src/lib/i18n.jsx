@@ -766,6 +766,8 @@ const D = {
   settle_cash_line: ['{name} చేతిలో ఉన్న నగదు: {amount}', 'Cash in hand with {name}: {amount}'],
   member_cash_error: ['నగదు బ్యాలెన్స్ చూపలేకపోయాం — పేజీని రిఫ్రెష్ చేయండి', 'Could not load the cash balance – refresh the page'],
   app_version: ['యాప్ వెర్షన్: {when}', 'App version: {when}'],
+  update_now: ['🔄 యాప్‌ను ఇప్పుడే అప్‌డేట్ చేయండి', '🔄 Update app now'],
+  update_now_hint: ['మార్పులు కనిపించకపోతే నొక్కండి — ఫోన్‌లో ఉన్న పాత కాపీ తీసివేసి కొత్త వెర్షన్ తెరుస్తుంది', "Tap if a change doesn't show – removes the old copy saved on this phone and opens the newest version"],
   member_deleted: ['{name} తొలగించబడ్డారు ✅', '{name} deleted ✅'],
   member_deleted_kept: ['{name} తొలగించబడ్డారు ✅ — వారి రసీదులు / ఖర్చులు లెక్కల్లో ఉన్నాయి', '{name} deleted ✅ – their receipts / expenses stay in the accounts'],
   err_member_has_balance: ['ఈ సభ్యుని నగదు బ్యాలెన్స్ ఇంకా సున్నా కాదు — ముందుగా "నగదు అప్పగింత"లో సర్దుబాటు చేయండి', "This member's cash balance is not zero yet – settle it in \"Cash handover\" first"],

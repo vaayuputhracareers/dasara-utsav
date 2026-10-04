@@ -1,6 +1,6 @@
 /* Light offline cache for the app shell. Supabase data is never cached.
    Works at any address: https://site.netlify.app/ or https://name.github.io/dasara-utsav/ */
-const CACHE = 'dasara-v6';
+const CACHE = 'dasara-v7';
 const BASE = new URL('./', self.location).pathname; // "/" or "/dasara-utsav/"
 const INDEX = BASE + 'index.html';
 const SHELL = [BASE, INDEX, BASE + 'manifest.webmanifest', BASE + 'icons/icon-192.png'];
@@ -44,15 +44,17 @@ self.addEventListener('fetch', (e) => {
   }
   if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/sb/')) return;
   if (req.mode === 'navigate') {
-    // Network first, so a new version shows up immediately; the cached copy is only for offline.
-    // cache: 'no-cache' → always ask the website (GitHub Pages otherwise lets phones reuse the page for 10 minutes).
-    e.respondWith(fetch(req.url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'manual' }).then((res) => {
-      if (res.ok && (url.pathname === BASE || url.pathname === INDEX)) {
+    // Always the newest version: every screen of the app is index.html, so fetch a fresh copy of it with a
+    // unique address (nothing on the way – phone, network or website cache – can hand back an old one).
+    // The saved copy is only used when there is no internet.
+    e.respondWith(fetch(`${INDEX}?fresh=${Date.now()}`, { cache: 'no-store', credentials: 'same-origin' }).then((res) => {
+      if (res.ok) {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(INDEX, copy));
+        return res;
       }
-      return res;
-    }).catch(() => caches.match(INDEX)));
+      return fetch(req);
+    }).catch(() => caches.match(INDEX).then((hit) => hit || fetch(req))));
     return;
   }
   if (url.pathname.startsWith(BASE + 'assets/')) {
