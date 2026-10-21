@@ -1,6 +1,6 @@
 // Version 12 – 📷 Photos (day-wise) · 🥻 Saree donors · 🔨 Saree auction.
 // The admin adds / changes / deletes; team members only look (visitors see them on the public page).
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
 import { useLang } from '../lib/i18n.jsx';
@@ -8,10 +8,10 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { useAsync } from '../lib/useAsync.js';
 import { errMsg } from '../lib/errors.js';
-import { todayIST } from '../lib/format.js';
+import { inr, fmtDay, todayIST } from '../lib/format.js';
 import { imageUrl, uploadPicture, removePictures, isMissing, toAmount } from '../lib/festival.js';
-import { Page, Spinner, Modal, Field, useToast, MobileInput, Switch } from '../components/ui.jsx';
-import { PhotoDays, SareeDonorList, AuctionList, PictureViewer, auctionView, picturesOf, photoItem, donorItem, lotItem } from '../components/Festival.jsx';
+import { Page, Spinner, Modal, Field, useToast, MobileInput, Seg, Empty } from '../components/ui.jsx';
+import { PhotoDays, SareeDonorList, AuctionList, PictureViewer, auctionView, picturesOf, photoItem, donorItem, lotItem, bidderKey, bidderGroups } from '../components/Festival.jsx';
 import { DbUpdateNotice, useDbVersion } from '../components/DbUpdate.jsx';
 
 const TABS = [
@@ -37,6 +37,96 @@ function PicturePick({ form, setForm, fallback, testid }) {
       <button type="button" className="btn ghost sm" onClick={() => ref.current?.click()}>{own ? t('change_photo') : t('take_photo')}</button>
       {own && <button type="button" className="btn ghost sm danger-t" onClick={() => setForm((x) => ({ ...x, file: null, preview: '', removeImage: true }))}>{t('remove_photo')}</button>}
       {!own && fallback && <span className="hint">{t('picture_from_donor')}</span>}
+    </div>
+  );
+}
+
+/** Saree auction totals (team): total bid amount, payment received, outstanding. */
+function AuctionTotals({ lots, payments }) {
+  const { t } = useLang();
+  const bid = lots.reduce((s, a) => s + Number(a.bid_amount || 0), 0);
+  const got = payments.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const due = Math.round((bid - got) * 100) / 100;
+  const bidders = new Set(lots.map((a) => bidderKey(a.bidder_name)).filter(Boolean)).size;
+  return (
+    <div className="card" data-testid="auction-totals">
+      <div className="mini">
+        <div><small>{t('total_bid_amount')}</small><b className="num" data-testid="au-total-bid">{inr(bid)}</b></div>
+        <div><small>{t('payment_received')}</small><b className="num" style={{ color: 'var(--green)' }} data-testid="au-total-paid">{inr(got)}</b></div>
+        <div><small>{t('outstanding')}</small><b className="num" style={{ color: due > 0 ? 'var(--kumkum)' : 'var(--green)' }} data-testid="au-total-due">{inr(due)}</b></div>
+      </div>
+      <p className="hint" style={{ marginTop: 6 }}>{t('auction_counts', { n: lots.length, m: bidders })}</p>
+    </div>
+  );
+}
+
+/** Bidder-wise view: pick a bidder → all his sarees, his totals and his payments. */
+function BidderView({ groups, sel, onSel, canPay, onPay, onEditPay, onEditLot, onPicture }) {
+  const { t, lang } = useLang();
+  const g = groups.find((x) => x.key === sel);
+  const status = (x) => (x.due > 0 ? <span className="badge orange num">{t('due_x', { amount: inr(x.due) })}</span>
+    : x.due < 0 ? <span className="badge green num">{t('extra_x', { amount: inr(-x.due) })}</span>
+      : <span className="badge green">{t('fully_paid')}</span>);
+  return (
+    <div className="stack" data-testid="bidder-view">
+      <select className="input" value={g ? sel : ''} onChange={(e) => onSel(e.target.value)} data-testid="bidder-select">
+        <option value="">{t('select_bidder')}</option>
+        {groups.map((x) => <option key={x.key} value={x.key}>{x.name}{x.village ? ` (${x.village})` : ''} – {inr(x.bid)}</option>)}
+      </select>
+      {!groups.length && <Empty icon="👤" text={t('no_bidders')} />}
+      {!g && groups.length > 0 && (
+        <div className="card" data-testid="bidder-list">
+          <div className="list">
+            {groups.map((x) => (
+              <div key={x.key} className="li" onClick={() => onSel(x.key)} data-testid="bidder-row">
+                <div className="grow">
+                  <div className="main-t">👤 {x.name}</div>
+                  <div className="sub-t">{[x.village, t('sarees_n', { n: x.lots.length })].filter(Boolean).join(' · ')}</div>
+                  <div className="sub-t num">{t('bid_paid_line', { bid: inr(x.bid), paid: inr(x.paid) })}</div>
+                </div>
+                <div className="amt">{status(x)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {g && (
+        <>
+          <div className="card" data-testid="bidder-detail">
+            <div className="row between">
+              <div>
+                <div className="main-t" style={{ fontSize: 16 }}>👤 {g.name}</div>
+                {(g.village || g.mobile) && <div className="sub-t">{g.village}{g.village && g.mobile ? ' · ' : ''}{g.mobile && <a className="num" href={`tel:${g.mobile}`}>📞 {g.mobile}</a>}</div>}
+              </div>
+              <button type="button" className="btn ghost xs" onClick={() => onSel('')}>✕ {t('all_bidders')}</button>
+            </div>
+            <div className="mini" style={{ marginTop: 10 }}>
+              <div><small>{t('total_bid_amount')}</small><b className="num" data-testid="bd-bid">{inr(g.bid)}</b></div>
+              <div><small>{t('payment_received')}</small><b className="num" style={{ color: 'var(--green)' }} data-testid="bd-paid">{inr(g.paid)}</b></div>
+              <div><small>{g.due < 0 ? t('extra_paid') : t('outstanding')}</small><b className="num" style={{ color: g.due > 0 ? 'var(--kumkum)' : 'var(--green)' }} data-testid="bd-due">{inr(Math.abs(g.due))}</b></div>
+            </div>
+            {canPay && <button type="button" className="btn primary block" style={{ marginTop: 10 }} onClick={() => onPay(g)} data-testid="bd-pay">{t('record_payment')}</button>}
+          </div>
+          <div className="section-title">🥻 {t('sarees_n', { n: g.lots.length })}</div>
+          {g.lots.length ? <AuctionList items={g.lots} team hideSummary onEdit={onEditLot} onPicture={onPicture} /> : <p className="hint">{t('bidder_no_sarees')}</p>}
+          <div className="section-title">💵 {t('payments_title')}</div>
+          <div className="card" data-testid="bidder-payments">
+            {!g.payments.length ? <Empty icon="💵" text={t('no_payments')} /> : (
+              <div className="list">
+                {g.payments.map((p) => (
+                  <div key={p.id} className="li" style={{ cursor: canPay ? 'pointer' : 'default' }} onClick={() => canPay && onEditPay(p)} data-testid="payment-row">
+                    <div className="grow">
+                      <div className="main-t">{fmtDay(p.paid_on, lang)}</div>
+                      <div className="sub-t">{p.payment_mode === 'upi' ? 'UPI' : t('cash')}{p.note ? ` · ${p.note}` : ''}</div>
+                    </div>
+                    <div className="amt">{inr(p.amount)}{canPay && <div className="sub-t">✏️</div>}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -68,20 +158,28 @@ export default function Festival() {
   const [donor, setDonor] = useState(null);
   const [lot, setLot] = useState(null);
   const [busy, setBusy] = useState('');
+  const [aview, setAview] = useState('sarees');   // auction: saree-wise | bidder-wise
+  const [bidSel, setBidSel] = useState('');
+  const [pay, setPay] = useState(null);
 
   const { data, loading, error, reload } = useAsync(async () => {
-    const [p, d, a] = await Promise.all([
+    const [p, d, a, pay] = await Promise.all([
       supabase.from('photos').select('*').order('photo_date', { ascending: false }).order('created_at'),
       supabase.from('saree_donors').select('*').order('given_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('saree_auction').select('*, donor:saree_donors(id,donor_name,village,image_path,saree_details)').order('auction_date').order('created_at'),
+      supabase.from('saree_auction_payments').select('*').order('paid_on').order('created_at'),   // version 13
     ]);
     for (const r of [p, d, a]) {
       if (r.error && isMissing(r.error)) return { missing: true };
       if (r.error) throw r.error;
     }
-    return { photos: p.data || [], donors: d.data || [], auction: (a.data || []).map(auctionView) };
+    const payMissing = !!pay.error && isMissing(pay.error);   // database before version 13
+    if (pay.error && !payMissing) throw pay.error;
+    return { photos: p.data || [], donors: d.data || [], auction: (a.data || []).map(auctionView), payments: payMissing ? [] : pay.data || [], payMissing };
   }, []);
   const ok = data && !data.missing;
+  const groups = useMemo(() => (ok ? bidderGroups(data.auction, data.payments) : []), [ok, data]);
+  const payGroup = pay ? groups.find((x) => x.key === bidderKey(pay.bidder_name)) : null;
 
   // ---------- photos ----------
   const savePhotos = async () => {
@@ -197,7 +295,7 @@ export default function Festival() {
       saree_no: f.saree_no.trim(), saree_details: f.saree_details.trim(), saree_donor_id: f.saree_donor_id || null,
       base_rate: toAmount(f.base_rate), bidder_name: f.bidder_name.trim(), bidder_village: f.bidder_village.trim(),
       bidder_mobile: f.bidder_mobile || null, bid_amount: toAmount(f.bid_amount), auction_date: f.auction_date || todayIST(),
-      paid: !!f.paid, note: f.note.trim(),
+      note: f.note.trim(),
     };
     if (await savePictureRow('saree_auction', f, row, 'auction')) setLot(null);
   };
@@ -209,6 +307,37 @@ export default function Festival() {
     if (e) { toast(errMsg(e, t), 'error'); return; }
     if (lot.orig_image) removePictures([lot.orig_image]);   // only its own picture, never the donor's
     setLot(null);
+    toast(t('fest_deleted'), 'success');
+    reload(true);
+  };
+
+  // ---------- auction payments (version 13): a bidder may pay in parts ----------
+  const newPay = (g) => setPay({ bidder_name: g?.name || '', amount: g && g.due > 0 ? String(g.due) : '', paid_on: todayIST(), payment_mode: 'cash', note: '' });
+  const editPay = (p) => setPay({ ...p, amount: String(Number(p.amount)), note: p.note || '' });
+  const savePay = async () => {
+    const f = pay;
+    const amount = toAmount(f.amount);
+    if (!bidderKey(f.bidder_name)) { toast(t('need_bidder'), 'error'); return; }
+    if (!amount || amount <= 0) { toast(t('err_invalid_amount'), 'error'); return; }
+    setBusy(t('saving'));
+    const row = { bidder_name: f.bidder_name.trim().replace(/\s+/g, ' '), amount, paid_on: f.paid_on || todayIST(), payment_mode: f.payment_mode === 'upi' ? 'upi' : 'cash', note: (f.note || '').trim() };
+    const { error: e } = f.id
+      ? await supabase.from('saree_auction_payments').update(row).eq('id', f.id)
+      : await supabase.from('saree_auction_payments').insert({ ...row, created_by: profile.id });
+    setBusy('');
+    if (e) { toast(errMsg(e, t), 'error'); return; }
+    toast(t('payment_saved'), 'success');
+    setBidSel(bidderKey(row.bidder_name));
+    setPay(null);
+    reload(true);
+  };
+  const delPay = async () => {
+    if (!window.confirm(t('delete_payment_confirm'))) return;
+    setBusy(t('saving'));
+    const { error: e } = await supabase.from('saree_auction_payments').delete().eq('id', pay.id);
+    setBusy('');
+    if (e) { toast(errMsg(e, t), 'error'); return; }
+    setPay(null);
     toast(t('fest_deleted'), 'success');
     reload(true);
   };
@@ -240,8 +369,22 @@ export default function Festival() {
           {tab === 'sarees' && <SareeDonorList items={data.donors} team onEdit={isAdmin ? editDonor : null} onPicture={openDonor} />}
           {tab === 'auction' && (
             <>
-              {isAdmin && <p className="hint">{t('auction_hint')}</p>}
-              <AuctionList items={data.auction} team onEdit={isAdmin ? editLot : null} onPicture={openLot} />
+              <AuctionTotals lots={data.auction} payments={data.payments} />
+              {data.payMissing && (isAdmin ? <FestivalDbUpdate /> : <div className="alert warn">{t('festival_needs_db_member')}</div>)}
+              <div className="seg" data-testid="auction-views">
+                <button type="button" className={aview === 'sarees' ? 'on' : ''} onClick={() => setAview('sarees')} data-testid="view-sarees">🥻 {t('view_sarees')}</button>
+                <button type="button" className={aview === 'bidders' ? 'on' : ''} onClick={() => setAview('bidders')} data-testid="view-bidders">👤 {t('view_bidders')}</button>
+              </div>
+              {aview === 'sarees' ? (
+                <>
+                  {isAdmin && <p className="hint">{t('auction_hint')}</p>}
+                  <AuctionList items={data.auction} team hideSummary onEdit={isAdmin ? editLot : null} onPicture={openLot}
+                    onBidder={(name) => { setBidSel(bidderKey(name)); setAview('bidders'); }} />
+                </>
+              ) : (
+                <BidderView groups={groups} sel={bidSel} onSel={setBidSel} canPay={isAdmin && !data.payMissing}
+                  onPay={newPay} onEditPay={editPay} onEditLot={isAdmin ? editLot : null} onPicture={openLot} />
+              )}
               {isAdmin && data.auction.length > 0 && <p className="hint">{t('auction_not_in_accounts')}</p>}
             </>
           )}
@@ -327,12 +470,12 @@ export default function Festival() {
             <Field label={t('saree_photo')} optional><PicturePick form={lot} setForm={setLot} fallback={imageUrl(lotDonor?.image_path)} testid="au-photo" /></Field>
             <Field label={t('base_rate')} optional><input className="input num" inputMode="decimal" value={lot.base_rate} onChange={set(setLot, 'base_rate')} placeholder="₹" data-testid="au-base" /></Field>
             <div className="grid2">
-              <Field label={t('bidder_name')} optional><input className="input" value={lot.bidder_name} onChange={set(setLot, 'bidder_name')} data-testid="au-bidder" /></Field>
+              <Field label={t('bidder_name')} optional><input className="input" list="bidder-names" value={lot.bidder_name} onChange={set(setLot, 'bidder_name')} data-testid="au-bidder" /></Field>
               <Field label={t('bidder_village')} optional><input className="input" value={lot.bidder_village} onChange={set(setLot, 'bidder_village')} /></Field>
             </div>
+            <p className="hint">{t('same_bidder_hint')}</p>
             <Field label={t('bid_amount')} optional><input className="input num big" inputMode="decimal" value={lot.bid_amount} onChange={set(setLot, 'bid_amount')} placeholder="₹" data-testid="au-amount" /></Field>
             <Field label={t('bidder_mobile')} optional><MobileInput className="input num" value={lot.bidder_mobile} onChange={(v) => setLot((x) => ({ ...x, bidder_mobile: v }))} autoComplete="off" /></Field>
-            <div className="toggle-row"><span>{t('auction_paid')}</span><Switch checked={lot.paid} onChange={(v) => setLot((x) => ({ ...x, paid: v }))} /></div>
             <Field label={t('note')} optional><input className="input" value={lot.note} onChange={set(setLot, 'note')} /></Field>
             <p className="hint">{t('team_only_hint_auction')}</p>
             <div className="grid2">
@@ -342,6 +485,28 @@ export default function Festival() {
           </div>
         )}
       </Modal>
+
+      {/* ---------- auction payment (version 13) ---------- */}
+      <Modal open={!!pay} onClose={() => !busy && setPay(null)} title={pay?.id ? t('edit_payment') : t('record_payment')}>
+        {pay && (
+          <div className="stack" data-testid="payment-form">
+            <Field label={t('bidder_name')}><input className="input" list="bidder-names" value={pay.bidder_name} onChange={set(setPay, 'bidder_name')} data-testid="pay-bidder" /></Field>
+            {payGroup && <p className="hint num" data-testid="pay-bidder-line">{t('bid_paid_due_line', { bid: inr(payGroup.bid), paid: inr(payGroup.paid), due: inr(payGroup.due) })}</p>}
+            <Field label={t('amount_paid_now')}><input className="input num big" inputMode="decimal" value={pay.amount} onChange={set(setPay, 'amount')} placeholder="₹" data-testid="pay-amount" /></Field>
+            <div className="grid2">
+              <Field label={t('date')}><input type="date" className="input" value={pay.paid_on} onChange={set(setPay, 'paid_on')} data-testid="pay-date" /></Field>
+              <Field label={t('pay_mode_l')}><Seg options={[{ value: 'cash', label: `💵 ${t('cash')}` }, { value: 'upi', label: '📱 UPI' }]} value={pay.payment_mode} onChange={(v) => setPay((x) => ({ ...x, payment_mode: v }))} /></Field>
+            </div>
+            <Field label={t('note')} optional><input className="input" value={pay.note} onChange={set(setPay, 'note')} data-testid="pay-note" /></Field>
+            <p className="hint">{t('partial_hint')}</p>
+            <div className="grid2">
+              {pay.id ? <button className="btn ghost danger-t" disabled={!!busy} onClick={delPay} data-testid="pay-delete">🗑️ {t('delete')}</button> : <span />}
+              <button className="btn primary" disabled={!!busy} onClick={savePay} data-testid="pay-save">{busy || t('save')}</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      <datalist id="bidder-names">{groups.map((g) => <option key={g.key} value={g.name} />)}</datalist>
 
       {viewer && (
         <PictureViewer items={viewer.items} index={viewer.index} onIndex={(i) => setViewer((v) => ({ ...v, index: i }))} onClose={() => setViewer(null)}

@@ -18,6 +18,7 @@
 --    • photos          – day-wise festival photos
 --    • saree_donors    – devotees who gave sarees (with a picture)
 --    • saree_auction   – saree auction: saree, starting rate, bidder, final rate, picture
+--    • saree_auction_payments – what each bidder paid (part payments allowed)
 --    • audit_log       – history of every important change
 --    • storage buckets – 'bills' (private) and 'assets' (logo, splash, photos and saree pictures – public)
 --  Security: Row Level Security is ON for every table.
@@ -331,6 +332,29 @@ create table if not exists public.saree_auction (
   updated_at      timestamptz not null default now()
 );
 
+-- Added in version 13 – saree auction payments: a bidder pays for all his sarees together, in parts if he likes.
+-- Same bidder = same name. Outstanding = final rates of his sarees − his payments.
+create table if not exists public.saree_auction_payments (
+  id            uuid primary key default gen_random_uuid(),
+  bidder_name   text not null check (length(btrim(bidder_name)) > 0),
+  amount        numeric(12,2) not null check (amount > 0),
+  paid_on       date not null default ((now() at time zone 'Asia/Kolkata')::date),
+  payment_mode  text not null default 'cash' check (payment_mode in ('cash','upi')),
+  note          text not null default '',
+  auction_id    uuid references public.saree_auction(id) on delete set null,   -- set only for payments moved from the old "paid" switch
+  created_by    uuid references public.profiles(id) on delete set null,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+-- version 13: the old "Auction money paid" switch (version 12) becomes a payment of the full final rate (once)
+insert into public.saree_auction_payments (bidder_name, amount, paid_on, payment_mode, auction_id, created_by)
+select btrim(a.bidder_name), a.bid_amount, a.auction_date, 'cash', a.id, a.created_by
+  from public.saree_auction a
+ where a.paid and coalesce(a.bid_amount, 0) > 0 and btrim(a.bidder_name) <> ''
+   and not exists (select 1 from public.saree_auction_payments x where x.auction_id = a.id);
+update public.saree_auction a set paid = false
+ where a.paid and exists (select 1 from public.saree_auction_payments x where x.auction_id = a.id);
+
 create table if not exists public.audit_log (
   id         bigint generated always as identity primary key,
   at         timestamptz not null default now(),
@@ -357,6 +381,7 @@ create index if not exists audit_at_idx               on public.audit_log (at de
 create index if not exists photos_date_idx            on public.photos (photo_date, created_at);
 create index if not exists saree_donors_date_idx      on public.saree_donors (given_date, created_at);
 create index if not exists saree_auction_date_idx     on public.saree_auction (auction_date, created_at);
+create index if not exists saree_payments_date_idx    on public.saree_auction_payments (paid_on, created_at);
 
 -- ---------------------------------------------------------------------
 -- 2. HELPER FUNCTIONS
@@ -599,6 +624,9 @@ create trigger saree_donors_touch before update on public.saree_donors
 drop trigger if exists saree_auction_touch on public.saree_auction;
 create trigger saree_auction_touch before update on public.saree_auction
   for each row execute function public.touch_updated_at();
+drop trigger if exists saree_payments_touch on public.saree_auction_payments;
+create trigger saree_payments_touch before update on public.saree_auction_payments
+  for each row execute function public.touch_updated_at();
 
 -- 3c. Donation: receipt number, token, collector are set by the server
 create or replace function public.donations_before_insert() returns trigger
@@ -791,6 +819,7 @@ alter table public.cash_transfers enable row level security;
 alter table public.photos         enable row level security;
 alter table public.saree_donors   enable row level security;
 alter table public.saree_auction  enable row level security;
+alter table public.saree_auction_payments enable row level security;
 alter table public.audit_log      enable row level security;
 alter table public.receipt_counter enable row level security;   -- no policies: only server functions touch it
 
@@ -882,6 +911,10 @@ drop policy if exists saree_auction_select on public.saree_auction;
 create policy saree_auction_select on public.saree_auction for select to authenticated using (public.is_active_user());
 drop policy if exists saree_auction_write on public.saree_auction;
 create policy saree_auction_write on public.saree_auction for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists saree_payments_select on public.saree_auction_payments;
+create policy saree_payments_select on public.saree_auction_payments for select to authenticated using (public.is_active_user());
+drop policy if exists saree_payments_write on public.saree_auction_payments;
+create policy saree_payments_write on public.saree_auction_payments for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- audit log (admin read only)
 drop policy if exists audit_select on public.audit_log;
@@ -893,7 +926,8 @@ grant usage on schema public to anon, authenticated;
 revoke all on all tables in schema public from anon;
 grant select, insert, update, delete on public.profiles, public.member_invites, public.app_settings,
   public.handovers, public.donations, public.expenses, public.festival_days, public.programs,
-  public.pujas, public.cash_transfers, public.audit_log, public.photos, public.saree_donors, public.saree_auction to authenticated;
+  public.pujas, public.cash_transfers, public.audit_log, public.photos, public.saree_donors, public.saree_auction,
+  public.saree_auction_payments to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 5. FUNCTIONS CALLED BY THE APP
@@ -1388,8 +1422,9 @@ end $$;
 --   7 = member expenses paid back by the admin (cash / temple UPI), members may see the financial position
 --   8–11 = cash in hand / bank, opening balance, deleting members
 --   12 = day-wise photos, saree donors, saree auction, members see all donations / expenses
+--   13 = saree auction: totals, bidder-wise view, part payments
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 12 $$;
+language sql immutable set search_path = '' as $$ select 13 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1442,6 +1477,7 @@ begin
     'photos',          (select count(*) from public.photos),
     'saree_donors',    (select count(*) from public.saree_donors),
     'saree_auction',   (select count(*) from public.saree_auction),
+    'auction_payments', (select count(*) from public.saree_auction_payments),
     'history',         (select count(*) from public.audit_log));
 
   delete from public.donations where true;      -- "where true": allowed even where DELETE-without-WHERE is blocked
@@ -1451,6 +1487,7 @@ begin
   delete from public.festival_days where true;
   delete from public.pujas where true;
   delete from public.cash_transfers where true;
+  delete from public.saree_auction_payments where true;   -- version 13
   delete from public.saree_auction where true;   -- version 12
   delete from public.saree_donors where true;
   delete from public.photos where true;

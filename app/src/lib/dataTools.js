@@ -22,6 +22,7 @@ const SOURCES = [
   { table: 'photos', col: 'photo_date', kind: 'date', optional: true },             // version 12 – day-wise photos
   { table: 'saree_donors', col: 'given_date', kind: 'date', optional: true },       // version 12 – saree donors
   { table: 'saree_auction', col: 'auction_date', kind: 'date', optional: true },    // version 12 – saree auction
+  { table: 'saree_auction_payments', col: 'paid_on', kind: 'date', optional: true }, // version 13 – auction payments
 ];
 /** A table that is missing until the database update (e.g. the puja schedule before version 5). */
 const missing = (s, error) => !!s.optional && !!error && (['PGRST205', '42P01'].includes(error.code) || /schema cache|does not exist/i.test(String(error.message || '')));
@@ -132,7 +133,7 @@ async function fetchOptional(table, col, y, select = '*') {
 }
 
 export async function fetchYear(y) {
-  const [donations, expenses, handovers, programs, days, profiles, pujas, transfers, photos, sareeDonors, auction] = await Promise.all([
+  const [donations, expenses, handovers, programs, days, profiles, pujas, transfers, photos, sareeDonors, auction, auctionPayments] = await Promise.all([
     fetchAll(() => byYear(supabase.from('donations').select(DON_SELECT), 'collected_at', y, 'ts').order('collected_at').order('id')),
     fetchAll(() => byYear(supabase.from('expenses').select(EXP_SELECT), 'expense_date', y, 'date').order('expense_date').order('created_at').order('id')),
     fetchAll(() => byYear(supabase.from('handovers').select('*'), 'received_at', y, 'ts').order('received_at').order('id')),
@@ -144,8 +145,9 @@ export async function fetchYear(y) {
     fetchOptional('photos', 'photo_date', y),
     fetchOptional('saree_donors', 'given_date', y),
     fetchOptional('saree_auction', 'auction_date', y, '*, donor:saree_donors(donor_name)'),
+    fetchOptional('saree_auction_payments', 'paid_on', y),
   ]);
-  return { donations, expenses, handovers, programs, days, profiles, pujas, transfers, photos, sareeDonors, auction };
+  return { donations, expenses, handovers, programs, days, profiles, pujas, transfers, photos, sareeDonors, auction, auctionPayments };
 }
 
 /** File name of a bill photo inside the ZIP (also written in the Excel "Bill File" column). */
@@ -281,7 +283,9 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
   const auctionRows = auctionList.map((a) => ({ Date: dayCell(a.auction_date), 'Saree No': a.saree_no || '', 'Saree Details': a.saree_details || '',
     'Donated By': a.donor?.donor_name || '', 'Starting Rate': a.base_rate == null ? '' : n2(a.base_rate), Bidder: a.bidder_name || '',
     'Bidder Village': a.bidder_village || '', 'Bidder Mobile': a.bidder_mobile || '', 'Final Rate': a.bid_amount == null ? '' : n2(a.bid_amount),
-    Paid: a.paid ? 'Yes' : 'No', Note: a.note || '', 'Picture Link': picLink(a.image_path) }));
+    Note: a.note || '', 'Picture Link': picLink(a.image_path) }));
+  const payList = data.auctionPayments || [];   // version 13 – part payments by bidders
+  const paymentRows = payList.map((p) => ({ Date: dayCell(p.paid_on), Bidder: p.bidder_name || '', Amount: n2(p.amount), Mode: p.payment_mode === 'upi' ? 'UPI' : 'Cash', Note: p.note || '' }));
 
   const cats = new Map();
   approved.forEach((e) => {
@@ -343,11 +347,13 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     ['Photos', photoRows.length, ''],
     ['Saree donors', sareeRows.length, ''],
     ['Saree auction – sarees / final rates', auctionRows.length, sum(auctionList, (a) => a.bid_amount)],
+    ['Saree auction – payments received', paymentRows.length, sum(payList)],
+    ['Saree auction – outstanding', '', n2(sum(auctionList, (a) => a.bid_amount) - sum(payList))],
     [],
     ['Approved expenses by category', 'Count', 'Amount (₹)'],
     ...[...cats.entries()].sort((a, b) => b[1].s - a[1].s).map(([k, c]) => [k, c.n, n2(c.s)]),
     [],
-    ['Sheets in this file: Summary, Donations, Expenses, Cash handovers, Cash & Bank, Members, Day-wise, Programs, Alankaram, Puja schedule, Photos, Saree donors, Saree auction'],
+    ['Sheets in this file: Summary, Donations, Expenses, Cash handovers, Cash & Bank, Members, Day-wise, Programs, Alankaram, Puja schedule, Photos, Saree donors, Saree auction, Auction payments'],
     ['Bill photos: Settings → Export data → "Bill photos (ZIP)". The "Bill File" column in Expenses matches the file names.'],
   ];
 
@@ -365,6 +371,7 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     { name: 'Photos', rows: photoRows, filter: true },
     { name: 'Saree donors', rows: sareeRows, filter: true },
     { name: 'Saree auction', rows: auctionRows, filter: true },
+    { name: 'Auction payments', rows: paymentRows, money: ['Amount'], filter: true },
   ];
 }
 
@@ -418,6 +425,7 @@ async function lastChange(y) {
     q('photos', 'updated_at', 'photo_date', 'date'),              // version 12
     q('saree_donors', 'updated_at', 'given_date', 'date'),
     q('saree_auction', 'updated_at', 'auction_date', 'date'),
+    q('saree_auction_payments', 'updated_at', 'paid_on', 'date'),   // version 13
   ]);
   return v.filter(Boolean).sort((a, b) => Date.parse(a) - Date.parse(b)).pop() || null;
 }

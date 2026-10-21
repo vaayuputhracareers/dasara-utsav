@@ -431,3 +431,4 @@ ul.plain{margin:6px 0 0 18px;padding:0}
 .viewer-cap small{display:block;color:#e2d3c2;font-size:12.5px;margin-top:2px}
 .viewer-actions{display:flex;gap:8px;margin-top:10px}
 .viewer-actions .btn{flex:1}
+.link-btn{background:none;border:0;padding:0;font:inherit;color:var(--maroon);font-weight:800;text-align:left;cursor:pointer;display:block}

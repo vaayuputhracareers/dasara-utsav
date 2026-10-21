@@ -14,6 +14,36 @@ export const auctionView = (a) => ({
   donor_name: a.donor_name || a.donor?.donor_name || '',
 });
 
+/** Same bidder = same name (extra spaces and capital letters ignored). */
+export const bidderKey = (name) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const r2 = (n) => Math.round(n * 100) / 100;
+
+/** Version 13 – bidder-wise: each bidder's sarees (final rates), payments and what is still due. */
+export function bidderGroups(lots, payments) {
+  const m = new Map();
+  const get = (name) => {
+    const k = bidderKey(name);
+    if (!m.has(k)) m.set(k, { key: k, name: String(name).trim().replace(/\s+/g, ' '), village: '', mobile: '', lots: [], payments: [], bid: 0, paid: 0 });
+    return m.get(k);
+  };
+  (lots || []).forEach((a) => {
+    if (!bidderKey(a.bidder_name)) return;
+    const g = get(a.bidder_name);
+    g.lots.push(a);
+    g.bid += Number(a.bid_amount || 0);
+    if (!g.village && a.bidder_village) g.village = a.bidder_village;
+    if (!g.mobile && a.bidder_mobile) g.mobile = a.bidder_mobile;
+  });
+  (payments || []).forEach((p) => {
+    if (!bidderKey(p.bidder_name)) return;
+    const g = get(p.bidder_name);
+    g.payments.push(p);
+    g.paid += Number(p.amount || 0);
+  });
+  return [...m.values()].map((g) => ({ ...g, bid: r2(g.bid), paid: r2(g.paid), due: r2(g.bid - g.paid) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Viewer items for the rows that have a picture + the position of the tapped row. */
 export function picturesOf(rows, row, toItem) {
   const withPic = (rows || []).filter((r) => toItem(r).src);
@@ -88,15 +118,13 @@ export function SareeDonorList({ items, team, onEdit, onPicture }) {
 }
 
 /** Saree auction: one entry per saree – picture, saree, donor, starting rate, bidder, final rate. */
-export function AuctionList({ items, team, onEdit, onPicture }) {
+export function AuctionList({ items, team, onEdit, onPicture, hideSummary, onBidder }) {
   const { t, lang } = useLang();
   if (!items?.length) return <Empty icon="🔨" text={t('no_auction')} />;
   const total = items.reduce((s, x) => s + Number(x.bid_amount || 0), 0);
-  const paid = items.reduce((s, x) => s + (x.paid ? Number(x.bid_amount || 0) : 0), 0);
   return (
     <>
-      <div className="summary-bar num" data-testid="auction-summary"><span>🔨 {t('sarees_n', { n: items.length })}</span><span>{t('auction_total')}: {inr(total)}</span></div>
-      {team && <p className="hint" data-testid="auction-paid-line">{t('auction_paid_total', { a: inr(paid), b: inr(total - paid) })}</p>}
+      {!hideSummary && <div className="summary-bar num" data-testid="auction-summary"><span>🔨 {t('sarees_n', { n: items.length })}</span><span>{t('auction_total')}: {inr(total)}</span></div>}
       <div className="card" data-testid="auction-list">
         {items.map((a) => (
           <div key={a.id} className="fest-card" data-testid="auction-row">
@@ -105,14 +133,15 @@ export function AuctionList({ items, team, onEdit, onPicture }) {
               <div className="main-t">{a.saree_no ? `#${a.saree_no}` : ''}{a.saree_no && a.details ? ' · ' : ''}{a.details || (a.saree_no ? '' : t('nav_auction'))}</div>
               {a.donor_name && <div className="sub-t">🙏 {t('donated_by_x', { name: a.donor_name })}</div>}
               {a.base_rate != null && <div className="sub-t num">{t('start_rate_x', { amount: inr(a.base_rate) })}</div>}
-              {a.bidder_name && <div className="sub-t">👤 {t('bidder_x', { name: [a.bidder_name, a.bidder_village].filter(Boolean).join(', ') })}</div>}
+              {a.bidder_name && (onBidder
+                ? <button type="button" className="link-btn sub-t" onClick={() => onBidder(a.bidder_name)} data-testid="auction-bidder-link">👤 {t('bidder_x', { name: [a.bidder_name, a.bidder_village].filter(Boolean).join(', ') })} ›</button>
+                : <div className="sub-t">👤 {t('bidder_x', { name: [a.bidder_name, a.bidder_village].filter(Boolean).join(', ') })}</div>)}
               {team && a.bidder_mobile && <div className="sub-t num">📞 <a href={`tel:${a.bidder_mobile}`}>{a.bidder_mobile}</a></div>}
               <div className="sub-t">{fmtDay(a.auction_date, lang)}</div>
               {team && a.note && <div className="sub-t">📝 {a.note}</div>}
             </div>
             <div className="fest-side">
               {a.bid_amount != null && <div className="fest-rate num">{inr(a.bid_amount)}</div>}
-              {team && a.bid_amount != null && <span className={`badge ${a.paid ? 'green' : 'orange'}`}>{a.paid ? t('paid_badge') : t('unpaid_badge')}</span>}
               {onEdit && <button type="button" className="btn ghost xs" onClick={() => onEdit(a)} data-testid="auction-edit">✏️</button>}
             </div>
           </div>
