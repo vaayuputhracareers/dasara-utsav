@@ -175,6 +175,8 @@ const D = {
   next_donation: ['➕ తదుపరి విరాళం', '➕ Next donation'],
   copy_message: ['📋 మెసేజ్ కాపీ', '📋 Copy message'],
   one_tap_hint: ['WhatsApp తెరుచుకుంటుంది — అక్కడ Send నొక్కితే చాలు', 'WhatsApp opens with the message ready — just press Send there'],
+  send_whatsapp_pick: ['WhatsApp లో పంపండి (వ్యక్తిని ఎంచుకోండి)', 'Send on WhatsApp (choose the person)'],
+  no_mobile_wa_hint: ['మొబైల్ నంబర్ ఇవ్వలేదు — WhatsApp తెరుచుకుంటుంది, ఎవరికి పంపాలో అక్కడ ఎంచుకోండి', 'No mobile number given – WhatsApp opens, choose there whom to send it to'],
   shared_at: ['రసీదు పంపారు · {time}', 'Receipt shared · {time}'],
   not_shared: ['రసీదు ఇంకా పంపలేదు', 'Receipt not shared yet'],
   view_receipt_page: ['🔗 రసీదు పేజీ', '🔗 Receipt page'],

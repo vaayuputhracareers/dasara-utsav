@@ -68,7 +68,8 @@ export function buildReceiptMessage(settings, d, collectorName) {
   return fillTemplate(settings.receipt_template || DEFAULT_TEMPLATE, receiptVars(settings, d, collectorName));
 }
 
-export const waLink = (mobile, text) => `https://wa.me/91${mobile}?text=${encodeURIComponent(text)}`;
+export const waLink = (mobile, text) => (mobile ? `https://wa.me/91${mobile}?text=${encodeURIComponent(text)}`
+  : `https://wa.me/?text=${encodeURIComponent(text)}`);   // no number → WhatsApp asks which chat
 export const smsLink = (mobile, text) => `sms:+91${mobile}?body=${encodeURIComponent(text)}`;
 
 /** The temple's UPI ID: name@bank (letters, digits, dot, dash, underscore before the @). */

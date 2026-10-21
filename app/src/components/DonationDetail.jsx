@@ -50,11 +50,11 @@ export default function DonationDetail({ d, onClose, onChanged }) {
   };
   const saveEdit = () => {
     if (!f.donor_name.trim()) return toast(t('err_donor_name_required'), 'error');
-    if (!isValidMobile(f.mobile)) return toast(t('mobile_invalid'), 'error');
+    if (f.mobile && !isValidMobile(f.mobile)) return toast(t('mobile_invalid'), 'error');
     if (!(Number(f.amount) > 0)) return toast(t('amount_invalid'), 'error');
     const p = f.purpose !== '' ? purposes[Number(f.purpose)] : null;
     run(async () => {
-      const patch = { donor_name: f.donor_name.trim(), mobile: cleanMobile(f.mobile), amount: Number(f.amount), payment_mode: f.payment_mode, village: f.village.trim() || null, gotram: f.gotram.trim() || null, notes: f.notes.trim() || null, upi_ref: f.upi_ref.trim() || null };
+      const patch = { donor_name: f.donor_name.trim(), mobile: f.mobile ? cleanMobile(f.mobile) : null, amount: Number(f.amount), payment_mode: f.payment_mode, village: f.village.trim() || null, gotram: f.gotram.trim() || null, notes: f.notes.trim() || null, upi_ref: f.upi_ref.trim() || null };
       if (p) { patch.purpose_te = p.te; patch.purpose_en = p.en; }
       const { error } = await supabase.from('donations').update(patch).eq('id', d.id);
       if (error) throw error;
@@ -82,10 +82,10 @@ export default function DonationDetail({ d, onClose, onChanged }) {
             <dt>WhatsApp</dt><dd>{d.shared_at ? t('shared_at', { time: fmtDateTime(d.shared_at, lang) }) : t('not_shared')}</dd>
             {d.status === 'cancelled' && <><dt>{t('cancelled')}</dt><dd>{t('reason_x', { reason: d.cancel_reason })} · {fmtDateTime(d.cancelled_at, lang)}</dd></>}
           </dl>
-          {d.status === 'active' && d.mobile && (
+          {d.status === 'active' && (
             <div className="grid2">
               <a className="btn wa sm" href={waLink(d.mobile, msg)} target="_blank" rel="noopener noreferrer" onClick={() => supabase.rpc('mark_receipt_shared', { p_id: d.id })}>WhatsApp</a>
-              <a className="btn ghost sm" href={smsLink(d.mobile, msg)}>{t('send_sms')}</a>
+              {d.mobile && <a className="btn ghost sm" href={smsLink(d.mobile, msg)}>{t('send_sms')}</a>}
             </div>
           )}
           <div className="grid2">
@@ -118,7 +118,7 @@ export default function DonationDetail({ d, onClose, onChanged }) {
       {mode === 'edit' && f && (
         <div className="stack">
           <Field label={t('donor_name')}><input className="input" value={f.donor_name} onChange={(e) => setF({ ...f, donor_name: e.target.value })} /></Field>
-          <Field label={t('mobile')}><MobileInput className="input num" value={f.mobile} onChange={(v) => setF({ ...f, mobile: v })} autoComplete="off" data-testid="edit-donor-mobile" /></Field>
+          <Field label={t('mobile')} optional><MobileInput className="input num" value={f.mobile} onChange={(v) => setF({ ...f, mobile: v })} autoComplete="off" data-testid="edit-donor-mobile" /></Field>
           <Field label={t('amount')}><input className="input big" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value.replace(/[^0-9.]/g, '') })} /></Field>
           <Field label={t('payment_mode')}><Seg value={f.payment_mode} onChange={(v) => setF({ ...f, payment_mode: v })} options={[{ value: 'cash', label: `💵 ${t('cash')}` }, { value: 'upi', label: '📱 UPI' }]} /></Field>
           {f.payment_mode === 'upi' && <Field label={t('upi_ref')} optional><input className="input num" value={f.upi_ref} onChange={(e) => setF({ ...f, upi_ref: e.target.value })} /></Field>}

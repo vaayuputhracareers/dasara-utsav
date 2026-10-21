@@ -34,7 +34,7 @@ export default function NewDonation() {
   const validate = () => {
     const er = {};
     if (!f.donor_name.trim()) er.donor_name = t('err_donor_name_required');
-    if (!isValidMobile(f.mobile)) er.mobile = t('mobile_invalid');
+    if (f.mobile && !isValidMobile(f.mobile)) er.mobile = t('mobile_invalid');   // optional – only checked when typed
     if (!(Number(f.amount) > 0)) er.amount = t('amount_invalid');
     setErrors(er);
     return Object.keys(er).length === 0;
@@ -49,7 +49,7 @@ export default function NewDonation() {
     const p = f.purpose !== '' ? purposes[Number(f.purpose)] : null;
     const row = {
       id: clientId,
-      donor_name: f.donor_name.trim(), mobile: cleanMobile(f.mobile), amount, payment_mode: f.payment_mode,
+      donor_name: f.donor_name.trim(), mobile: f.mobile ? cleanMobile(f.mobile) : null, amount, payment_mode: f.payment_mode,
       village: f.village.trim() || null, gotram: f.gotram.trim() || null,
       purpose_te: p?.te || null, purpose_en: p?.en || null, notes: f.notes.trim() || null,
       upi_ref: f.payment_mode === 'upi' ? (f.upi_ref.trim() || null) : null, collected_by: profile.id,
@@ -74,7 +74,7 @@ export default function NewDonation() {
         <Field label={`${t('donor_name')} *`} error={errors.donor_name}>
           <input className={`input ${errors.donor_name ? 'bad' : ''}`} value={f.donor_name} onChange={(e) => set('donor_name', e.target.value)} autoComplete="off" />
         </Field>
-        <Field label={`${t('donor_mobile')} *`} error={errors.mobile}>
+        <Field label={t('donor_mobile')} optional error={errors.mobile}>
           <MobileInput className={`input num ${errors.mobile ? 'bad' : ''}`} value={f.mobile} onChange={(v) => set('mobile', v)} autoComplete="off" data-testid="donor-mobile" />
         </Field>
         <Field label={`${t('amount')} *`} error={errors.amount}>
