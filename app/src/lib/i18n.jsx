@@ -873,6 +873,12 @@ const D = {
   need_bidder: ['వేలంపాటదారు పేరు రాయండి', "Enter the bidder's name"],
   bid_paid_due_line: ['వేలం {bid} · చెల్లించింది {paid} · బాకీ {due}', 'Bid {bid} · paid {paid} · due {due}'],
   same_bidder_hint: ['ఒకే పేరు = ఒకే వేలంపాటదారు (మొత్తాలు, చెల్లింపుల కోసం). ఒకే పేరున్న ఇద్దరైతే పేరుతో పాటు గ్రామం కూడా రాయండి', 'Same name = same bidder (for totals and payments). For two people with the same name, add the village to the name'],
+  // change 20 – mandatory saree no / bidder / final bid amount, bidder dropdown
+  need_saree_no: ['చీర నంబర్ రాయండి', 'Enter the saree no.'],
+  need_bidder_pick: ['వేలంపాటదారుని ఎంచుకోండి (కొత్తవారైతే "➕ కొత్త వేలంపాటదారు")', 'Select the bidder (for a new person choose "➕ New bidder")'],
+  need_final_bid: ['చివరి వేలం ధర రాయండి', 'Enter the final bid amount'],
+  new_bidder_opt: ['➕ కొత్త వేలంపాటదారు', '➕ New bidder'],
+  new_bidder_ph: ['కొత్త వేలంపాటదారు పేరు', "New bidder's name"],
   day_completed: ['పూర్తయింది', 'Completed'],
   day_today: ['ఈరోజు', 'Today'],
   day_upcoming: ['రాబోయేది', 'Upcoming'],

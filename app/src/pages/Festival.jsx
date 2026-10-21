@@ -21,7 +21,7 @@ const TABS = [
 ];
 
 const newDonor = () => ({ donor_name: '', village: '', mobile: '', given_date: todayIST(), saree_details: '', note: '', image_path: '', file: null, preview: '', removeImage: false });
-const newLot = () => ({ saree_no: '', saree_donor_id: '', saree_details: '', base_rate: '', bidder_name: '', bidder_village: '', bidder_mobile: '', bid_amount: '', auction_date: todayIST(), paid: false, note: '', image_path: '', file: null, preview: '', removeImage: false });
+const newLot = () => ({ saree_no: '', saree_donor_id: '', saree_details: '', base_rate: '', bidder_name: '', bidder_village: '', bidder_mobile: '', bid_amount: '', auction_date: todayIST(), note: '', image_path: '', file: null, preview: '', removeImage: false, _newBidder: false });
 
 /** Picture of a form: choose / change / remove (fallback = the donated saree's picture). */
 function PicturePick({ form, setForm, fallback, testid }) {
@@ -180,6 +180,9 @@ export default function Festival() {
   const ok = data && !data.missing;
   const groups = useMemo(() => (ok ? bidderGroups(data.auction, data.payments) : []), [ok, data]);
   const payGroup = pay ? groups.find((x) => x.key === bidderKey(pay.bidder_name)) : null;
+  const bidders = useMemo(() => groups.filter((g) => g.lots.length > 0), [groups]);   // people who bid for earlier sarees
+  const lotKey = lot ? bidderKey(lot.bidder_name) : '';
+  const lotSel = !lot ? '' : (lot._newBidder || !bidders.length) ? '__new__' : (bidders.some((b) => b.key === lotKey) ? lotKey : '');
 
   // ---------- photos ----------
   const savePhotos = async () => {
@@ -287,13 +290,25 @@ export default function Festival() {
     orig_image: a.image_path || '', file: null, preview: '', removeImage: false,
   });
   const lotDonor = lot ? (data?.donors || []).find((d) => d.id === lot.saree_donor_id) : null;
+  // bidder dropdown: an earlier bidder (his village / mobile filled in) or ➕ New bidder
+  const pickBidder = (v) => setLot((x) => {
+    if (v === '__new__') {
+      const was = bidders.find((b) => b.key === bidderKey(x.bidder_name));
+      return { ...x, _newBidder: true, bidder_name: '', bidder_village: was ? '' : x.bidder_village, bidder_mobile: was ? '' : x.bidder_mobile };
+    }
+    const g = bidders.find((b) => b.key === v);
+    return { ...x, _newBidder: false, bidder_name: g ? g.name : '', bidder_village: g ? g.village : '', bidder_mobile: g ? g.mobile : '' };
+  });
   const saveLot = async () => {
     const f = lot;
+    if (!f.saree_no.trim()) { toast(t('need_saree_no'), 'error'); return; }
+    if (!bidderKey(f.bidder_name)) { toast(t('need_bidder_pick'), 'error'); return; }
+    if (!(toAmount(f.bid_amount) > 0)) { toast(t('need_final_bid'), 'error'); return; }
     if (!f.saree_no.trim() && !f.saree_details.trim() && !f.saree_donor_id && !f.file && !(f.image_path && !f.removeImage)) { toast(t('need_saree_info'), 'error'); return; }
     if (f.bidder_mobile && f.bidder_mobile.length !== 10) { toast(t('err_invalid_mobile'), 'error'); return; }
     const row = {
       saree_no: f.saree_no.trim(), saree_details: f.saree_details.trim(), saree_donor_id: f.saree_donor_id || null,
-      base_rate: toAmount(f.base_rate), bidder_name: f.bidder_name.trim(), bidder_village: f.bidder_village.trim(),
+      base_rate: toAmount(f.base_rate), bidder_name: f.bidder_name.trim().replace(/\s+/g, ' '), bidder_village: f.bidder_village.trim(),
       bidder_mobile: f.bidder_mobile || null, bid_amount: toAmount(f.bid_amount), auction_date: f.auction_date || todayIST(),
       note: f.note.trim(),
     };
@@ -457,7 +472,7 @@ export default function Festival() {
         {lot && (
           <div className="stack" data-testid="auction-form">
             <div className="grid2">
-              <Field label={t('saree_no')} optional><input className="input" value={lot.saree_no} onChange={set(setLot, 'saree_no')} data-testid="au-no" /></Field>
+              <Field label={`${t('saree_no')} *`}><input className="input" value={lot.saree_no} onChange={set(setLot, 'saree_no')} data-testid="au-no" /></Field>
               <Field label={t('date')}><input type="date" className="input" value={lot.auction_date} onChange={set(setLot, 'auction_date')} /></Field>
             </div>
             <Field label={t('donated_saree')} optional>
@@ -469,12 +484,19 @@ export default function Festival() {
             <Field label={t('saree_details')} optional><input className="input" value={lot.saree_details} onChange={set(setLot, 'saree_details')} placeholder={lotDonor?.saree_details || t('saree_details_ph')} data-testid="au-details" /></Field>
             <Field label={t('saree_photo')} optional><PicturePick form={lot} setForm={setLot} fallback={imageUrl(lotDonor?.image_path)} testid="au-photo" /></Field>
             <Field label={t('base_rate')} optional><input className="input num" inputMode="decimal" value={lot.base_rate} onChange={set(setLot, 'base_rate')} placeholder="₹" data-testid="au-base" /></Field>
-            <div className="grid2">
-              <Field label={t('bidder_name')} optional><input className="input" list="bidder-names" value={lot.bidder_name} onChange={set(setLot, 'bidder_name')} data-testid="au-bidder" /></Field>
-              <Field label={t('bidder_village')} optional><input className="input" value={lot.bidder_village} onChange={set(setLot, 'bidder_village')} /></Field>
-            </div>
-            <p className="hint">{t('same_bidder_hint')}</p>
-            <Field label={t('bid_amount')} optional><input className="input num big" inputMode="decimal" value={lot.bid_amount} onChange={set(setLot, 'bid_amount')} placeholder="₹" data-testid="au-amount" /></Field>
+            <Field label={`${t('bidder_name')} *`}>
+              {bidders.length > 0 && (
+                <select className="input" value={lotSel} onChange={(e) => pickBidder(e.target.value)} data-testid="au-bidder-select">
+                  <option value="">{t('select_bidder')}</option>
+                  {bidders.map((b) => <option key={b.key} value={b.key}>{b.name}{b.village ? ` (${b.village})` : ''}</option>)}
+                  <option value="__new__">{t('new_bidder_opt')}</option>
+                </select>
+              )}
+              {lotSel === '__new__' && <input className="input" style={bidders.length ? { marginTop: 8 } : undefined} value={lot.bidder_name} onChange={set(setLot, 'bidder_name')} placeholder={t('new_bidder_ph')} autoFocus={bidders.length > 0} data-testid="au-bidder" />}
+            </Field>
+            {lotSel === '__new__' && <p className="hint">{t('same_bidder_hint')}</p>}
+            <Field label={t('bidder_village')} optional><input className="input" value={lot.bidder_village} onChange={set(setLot, 'bidder_village')} /></Field>
+            <Field label={`${t('bid_amount')} *`}><input className="input num big" inputMode="decimal" value={lot.bid_amount} onChange={set(setLot, 'bid_amount')} placeholder="₹" data-testid="au-amount" /></Field>
             <Field label={t('bidder_mobile')} optional><MobileInput className="input num" value={lot.bidder_mobile} onChange={(v) => setLot((x) => ({ ...x, bidder_mobile: v }))} autoComplete="off" /></Field>
             <Field label={t('note')} optional><input className="input" value={lot.note} onChange={set(setLot, 'note')} /></Field>
             <p className="hint">{t('team_only_hint_auction')}</p>
