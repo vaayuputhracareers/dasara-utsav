@@ -1,8 +1,8 @@
 // Version 12 – 📷 Photos (day-wise) · 🥻 Saree donors · 🔨 Saree auction.
 // The admin adds / changes / deletes; team members only look (visitors see them on the public page).
 import { useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase.js';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { supabase, cleanMobile, isValidMobile } from '../lib/supabase.js';
 import { useLang } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
@@ -10,7 +10,7 @@ import { useAsync } from '../lib/useAsync.js';
 import { errMsg } from '../lib/errors.js';
 import { inr, fmtDay, todayIST } from '../lib/format.js';
 import { imageUrl, uploadPicture, removePictures, isMissing, toAmount } from '../lib/festival.js';
-import { Page, Spinner, Modal, Field, useToast, MobileInput, Seg, Empty } from '../components/ui.jsx';
+import { Page, Spinner, Modal, Field, useToast, MobileInput, Seg, Empty, Switch } from '../components/ui.jsx';
 import { PhotoDays, SareeDonorList, AuctionList, PictureViewer, auctionView, picturesOf, photoItem, donorItem, lotItem, bidderKey, bidderGroups } from '../components/Festival.jsx';
 import { DbUpdateNotice, useDbVersion } from '../components/DbUpdate.jsx';
 
@@ -61,7 +61,7 @@ function AuctionTotals({ lots, payments }) {
 }
 
 /** Bidder-wise view: pick a bidder → all his sarees, his totals and his payments. */
-function BidderView({ groups, sel, onSel, canPay, onPay, onEditPay, onDelPay, onEditLot, onPicture }) {
+function BidderView({ groups, sel, onSel, canPay, onPay, onEditPay, onDelPay, onEditLot, onPicture, receipts, onToDonation }) {
   const { t, lang } = useLang();
   const g = groups.find((x) => x.key === sel);
   const status = (x) => (x.due > 0 ? <span className="badge orange num">{t('due_x', { amount: inr(x.due) })}</span>
@@ -118,10 +118,16 @@ function BidderView({ groups, sel, onSel, canPay, onPay, onEditPay, onDelPay, on
                     <div className="grow">
                       <div className="main-t">{fmtDay(p.paid_on, lang)}</div>
                       <div className="sub-t">{p.payment_mode === 'upi' ? 'UPI' : t('cash')}{p.note ? ` · ${p.note}` : ''}</div>
+                      {receipts?.[p.id] && (
+                        <Link to={`/donate/done/${p.id}`} className={`badge ${receipts[p.id].status === 'active' ? 'green' : 'red'}`} style={{ display: 'inline-block', marginTop: 4 }} data-testid="pay-receipt">
+                          🧾 {receipts[p.id].receipt_no} · {receipts[p.id].status === 'active' ? t('in_donations') : t('cancelled')}
+                        </Link>
+                      )}
                       {canPay && (
-                        <div className="row" style={{ gap: 8, marginTop: 6 }}>
+                        <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                           <button type="button" className="btn ghost xs" onClick={() => onEditPay(p)} data-testid="pay-edit-btn">✏️ {t('edit')}</button>
                           <button type="button" className="btn ghost xs danger-t" onClick={() => onDelPay(p)} data-testid="pay-del-btn">🗑️ {t('delete')}</button>
+                          {!receipts?.[p.id] && <button type="button" className="btn ghost xs" onClick={() => onToDonation(p)} data-testid="pay-to-donation">➕ {t('add_to_donations_btn')}</button>}
                         </div>
                       )}
                     </div>
@@ -149,7 +155,7 @@ function FestivalDbUpdate() {
 }
 
 export default function Festival() {
-  const { t, L, lang } = useLang();
+  const { t, L, P, lang } = useLang();
   const { isAdmin, profile } = useAuth();
   const { settings } = useSettings();
   const toast = useToast();
@@ -181,11 +187,26 @@ export default function Festival() {
     }
     const payMissing = !!pay.error && isMissing(pay.error);   // database before version 13
     if (pay.error && !payMissing) throw pay.error;
-    return { photos: p.data || [], donors: d.data || [], auction: (a.data || []).map(auctionView), payments: payMissing ? [] : pay.data || [], payMissing };
+    const payments = payMissing ? [] : pay.data || [];
+    const receipts = {};   // payment id → its donation receipt (the donation is saved with the same id as the payment)
+    if (isAdmin && payments.length) {
+      const ids = payments.map((x) => x.id);
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data: rs } = await supabase.from('donations').select('id, receipt_no, status').in('id', ids.slice(i, i + 100));
+        (rs || []).forEach((r) => { receipts[r.id] = r; });
+      }
+    }
+    return { photos: p.data || [], donors: d.data || [], auction: (a.data || []).map(auctionView), payments, receipts, payMissing };
   }, []);
   const ok = data && !data.missing;
   const groups = useMemo(() => (ok ? bidderGroups(data.auction, data.payments) : []), [ok, data]);
   const payGroup = pay ? groups.find((x) => x.key === bidderKey(pay.bidder_name)) : null;
+  // auction payment → donation: purpose = the Settings purpose that mentions saree / auction, else "Saree auction"
+  const purposes = Array.isArray(settings.purposes) ? settings.purposes : [];
+  const auctionPurposeIdx = purposes.findIndex((x) => /saree|auction|చీర|వేలం/i.test(`${x?.te || ''} ${x?.en || ''}`));
+  const defaultPurpose = auctionPurposeIdx >= 0 ? String(auctionPurposeIdx) : 'auction';
+  const purposeOf = (v) => (v !== 'auction' && v !== '' && v != null && purposes[Number(v)]) || { te: 'చీరల వేలం', en: 'Saree auction' };
+  const payLinked = pay?.id ? data?.receipts?.[pay.id] : null;
   const bidders = useMemo(() => groups.filter((g) => g.lots.length > 0), [groups]);   // people who bid for earlier sarees
   const lotKey = lot ? bidderKey(lot.bidder_name) : '';
   const lotSel = !lot ? '' : (lot._newBidder || !bidders.length) ? '__new__' : (bidders.some((b) => b.key === lotKey) ? lotKey : '');
@@ -333,8 +354,33 @@ export default function Festival() {
   };
 
   // ---------- auction payments (version 13): a bidder may pay in parts ----------
-  const newPay = (g) => setPay({ bidder_name: g?.name || '', amount: g && g.due > 0 ? String(g.due) : '', paid_on: todayIST(), payment_mode: 'cash', note: '' });
-  const editPay = (p) => setPay({ ...p, amount: String(Number(p.amount)), note: p.note || '' });
+  const newPay = (g) => setPay({ bidder_name: g?.name || '', amount: g && g.due > 0 ? String(g.due) : '', paid_on: todayIST(), payment_mode: 'cash', note: '', toDon: true, purpose: defaultPurpose });
+  const editPay = (p) => setPay({ ...p, amount: String(Number(p.amount)), note: p.note || '', toDon: false, purpose: defaultPurpose });
+  /** Same steps as a normal donation (receipt number, History); the donation gets the payment's id → never added twice. */
+  const addDonation = async (p, purposeValue) => {
+    const g = groups.find((x) => x.key === bidderKey(p.bidder_name));
+    const pu = purposeOf(purposeValue);
+    const row = {
+      id: p.id, donor_name: p.bidder_name, mobile: g?.mobile && isValidMobile(g.mobile) ? cleanMobile(g.mobile) : null,
+      amount: Number(p.amount), payment_mode: p.payment_mode === 'upi' ? 'upi' : 'cash', village: g?.village || null, gotram: null,
+      purpose_te: pu.te || null, purpose_en: pu.en || null, notes: p.note || null, upi_ref: null, collected_by: profile.id,
+    };
+    let { data: dn, error: de } = await supabase.from('donations').insert(row).select('id, receipt_no, status').single();
+    if (de && (de.code === '23505' || /donations_pkey|duplicate key/i.test(de.message || ''))) {
+      const again = await supabase.from('donations').select('id, receipt_no, status').eq('id', p.id).maybeSingle();
+      if (again.data) { dn = again.data; de = null; }
+    }
+    return de ? { error: de } : dn;
+  };
+  const payToDonation = async (p) => {   // ➕ Add to donations – for a payment saved earlier
+    if (!window.confirm(t('add_to_donations_confirm', { amount: inr(p.amount) }))) return;
+    setBusy(t('saving'));
+    const r = await addDonation(p, defaultPurpose);
+    setBusy('');
+    if (r.error) { toast(errMsg(r.error, t), 'error', 6000); return; }
+    toast(t('added_to_donations', { no: r.receipt_no }), 'success');
+    reload(true);
+  };
   const savePay = async () => {
     const f = pay;
     const amount = toAmount(f.amount);
@@ -345,22 +391,39 @@ export default function Festival() {
     const { data: done, error: e } = f.id
       ? await supabase.from('saree_auction_payments').update(row).eq('id', f.id).select('id')
       : await supabase.from('saree_auction_payments').insert({ ...row, created_by: profile.id }).select('id');
+    if (e) { setBusy(''); toast(errMsg(e, t), 'error'); return; }
+    if (!done?.length) { setBusy(''); toast(t('pay_not_changed'), 'error'); return; }
+    const linked = f.id ? data?.receipts?.[f.id] : null;
+    let okMsg = t('payment_saved'); let bad = '';
+    if (linked && linked.status === 'active') {   // keep its donation receipt the same as the payment
+      const { error: de } = await supabase.from('donations').update({ donor_name: row.bidder_name, amount: row.amount, payment_mode: row.payment_mode }).eq('id', done[0].id);
+      if (de) bad = t('pay_receipt_not_updated', { no: linked.receipt_no, err: errMsg(de, t) });
+    } else if (!linked && f.toDon) {
+      const r = await addDonation({ ...row, id: done[0].id }, f.purpose);
+      if (r.error) bad = t('pay_not_in_donations', { err: errMsg(r.error, t) });
+      else okMsg = t('payment_saved_receipt', { no: r.receipt_no });
+    }
     setBusy('');
-    if (e) { toast(errMsg(e, t), 'error'); return; }
-    if (!done?.length) { toast(t('pay_not_changed'), 'error'); return; }
-    toast(t('payment_saved'), 'success');
+    if (bad) toast(bad, 'error', 7000); else toast(okMsg, 'success');
     setBidSel(bidderKey(row.bidder_name));
     setPay(null);
     reload(true);
   };
   const removePay = async (p) => {   // from the 🗑️ button on the payment, or Delete inside its edit window
-    if (!p?.id || !window.confirm(t('delete_payment_confirm_x', { amount: inr(p.amount) }))) return false;
+    const rc = p?.id ? data?.receipts?.[p.id] : null;
+    const live = rc && rc.status === 'active';
+    if (!p?.id || !window.confirm(live ? t('delete_payment_confirm_rc', { amount: inr(p.amount), no: rc.receipt_no }) : t('delete_payment_confirm_x', { amount: inr(p.amount) }))) return false;
     setBusy(t('saving'));
     const { data: gone, error: e } = await supabase.from('saree_auction_payments').delete().eq('id', p.id).select('id');
+    if (e) { setBusy(''); toast(errMsg(e, t), 'error'); return false; }
+    if (!gone?.length) { setBusy(''); toast(t('pay_not_changed'), 'error'); reload(true); return false; }
+    let bad = '';
+    if (live) {   // its donation receipt is cancelled too, so the accounts stay right
+      const { error: ce } = await supabase.rpc('cancel_donation', { p_id: p.id, p_reason: t('auction_pay_deleted_reason') });
+      if (ce) bad = t('receipt_not_cancelled', { no: rc.receipt_no, err: errMsg(ce, t) });
+    }
     setBusy('');
-    if (e) { toast(errMsg(e, t), 'error'); return false; }
-    if (!gone?.length) { toast(t('pay_not_changed'), 'error'); reload(true); return false; }
-    toast(t('fest_deleted'), 'success');
+    if (bad) toast(bad, 'error', 7000); else toast(t('fest_deleted'), 'success');
     reload(true);
     return true;
   };
@@ -407,7 +470,7 @@ export default function Festival() {
                 </>
               ) : (
                 <BidderView groups={groups} sel={bidSel} onSel={setBidSel} canPay={isAdmin && !data.payMissing}
-                  onPay={newPay} onEditPay={editPay} onDelPay={removePay} onEditLot={isAdmin ? editLot : null} onPicture={openLot} />
+                  onPay={newPay} onEditPay={editPay} onDelPay={removePay} receipts={data.receipts} onToDonation={payToDonation} onEditLot={isAdmin ? editLot : null} onPicture={openLot} />
               )}
               {isAdmin && data.auction.length > 0 && <p className="hint">{t('auction_not_in_accounts')}</p>}
             </>
@@ -530,6 +593,26 @@ export default function Festival() {
             </div>
             <Field label={t('note')} optional><input className="input" value={pay.note} onChange={set(setPay, 'note')} data-testid="pay-note" /></Field>
             <p className="hint">{t('partial_hint')}</p>
+            {payLinked ? (
+              <div className={`alert ${payLinked.status === 'active' ? 'info' : 'warn'}`} data-testid="pay-linked">
+                {payLinked.status === 'active' ? t('pay_in_donations', { no: payLinked.receipt_no }) : t('pay_receipt_cancelled', { no: payLinked.receipt_no })}
+              </div>
+            ) : (
+              <div className="stack tight" style={{ background: 'var(--orange-l)', borderRadius: 12, padding: 10 }} data-testid="pay-to-donations">
+                <div className="toggle-row"><span>🧾 {t('add_to_donations')}</span><Switch checked={!!pay.toDon} onChange={(v) => setPay((x) => ({ ...x, toDon: v }))} /></div>
+                {pay.toDon && (
+                  <>
+                    <Field label={t('purpose')}>
+                      <select className="input" value={pay.purpose} onChange={set(setPay, 'purpose')} data-testid="pay-purpose">
+                        {auctionPurposeIdx < 0 && <option value="auction">🥻 {t('auction_purpose')}</option>}
+                        {purposes.map((x, i) => <option key={i} value={String(i)}>{P(x)}</option>)}
+                      </select>
+                    </Field>
+                    <p className="hint">{pay.id ? t('add_to_donations_hint_old') : t('add_to_donations_hint')}</p>
+                  </>
+                )}
+              </div>
+            )}
             <div className="grid2">
               {pay.id ? <button className="btn ghost danger-t" disabled={!!busy} onClick={delPay} data-testid="pay-delete">🗑️ {t('delete')}</button> : <span />}
               <button className="btn primary" disabled={!!busy} onClick={savePay} data-testid="pay-save">{busy || t('save')}</button>
