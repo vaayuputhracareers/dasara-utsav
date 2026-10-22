@@ -61,7 +61,7 @@ function AuctionTotals({ lots, payments }) {
 }
 
 /** Bidder-wise view: pick a bidder → all his sarees, his totals and his payments. */
-function BidderView({ groups, sel, onSel, canPay, onPay, onEditPay, onEditLot, onPicture }) {
+function BidderView({ groups, sel, onSel, canPay, onPay, onEditPay, onDelPay, onEditLot, onPicture }) {
   const { t, lang } = useLang();
   const g = groups.find((x) => x.key === sel);
   const status = (x) => (x.due > 0 ? <span className="badge orange num">{t('due_x', { amount: inr(x.due) })}</span>
@@ -114,12 +114,18 @@ function BidderView({ groups, sel, onSel, canPay, onPay, onEditPay, onEditLot, o
             {!g.payments.length ? <Empty icon="💵" text={t('no_payments')} /> : (
               <div className="list">
                 {g.payments.map((p) => (
-                  <div key={p.id} className="li" style={{ cursor: canPay ? 'pointer' : 'default' }} onClick={() => canPay && onEditPay(p)} data-testid="payment-row">
+                  <div key={p.id} className="li" data-testid="payment-row">
                     <div className="grow">
                       <div className="main-t">{fmtDay(p.paid_on, lang)}</div>
                       <div className="sub-t">{p.payment_mode === 'upi' ? 'UPI' : t('cash')}{p.note ? ` · ${p.note}` : ''}</div>
+                      {canPay && (
+                        <div className="row" style={{ gap: 8, marginTop: 6 }}>
+                          <button type="button" className="btn ghost xs" onClick={() => onEditPay(p)} data-testid="pay-edit-btn">✏️ {t('edit')}</button>
+                          <button type="button" className="btn ghost xs danger-t" onClick={() => onDelPay(p)} data-testid="pay-del-btn">🗑️ {t('delete')}</button>
+                        </div>
+                      )}
                     </div>
-                    <div className="amt">{inr(p.amount)}{canPay && <div className="sub-t">✏️</div>}</div>
+                    <div className="amt">{inr(p.amount)}</div>
                   </div>
                 ))}
               </div>
@@ -336,26 +342,29 @@ export default function Festival() {
     if (!amount || amount <= 0) { toast(t('err_invalid_amount'), 'error'); return; }
     setBusy(t('saving'));
     const row = { bidder_name: f.bidder_name.trim().replace(/\s+/g, ' '), amount, paid_on: f.paid_on || todayIST(), payment_mode: f.payment_mode === 'upi' ? 'upi' : 'cash', note: (f.note || '').trim() };
-    const { error: e } = f.id
-      ? await supabase.from('saree_auction_payments').update(row).eq('id', f.id)
-      : await supabase.from('saree_auction_payments').insert({ ...row, created_by: profile.id });
+    const { data: done, error: e } = f.id
+      ? await supabase.from('saree_auction_payments').update(row).eq('id', f.id).select('id')
+      : await supabase.from('saree_auction_payments').insert({ ...row, created_by: profile.id }).select('id');
     setBusy('');
     if (e) { toast(errMsg(e, t), 'error'); return; }
+    if (!done?.length) { toast(t('pay_not_changed'), 'error'); return; }
     toast(t('payment_saved'), 'success');
     setBidSel(bidderKey(row.bidder_name));
     setPay(null);
     reload(true);
   };
-  const delPay = async () => {
-    if (!window.confirm(t('delete_payment_confirm'))) return;
+  const removePay = async (p) => {   // from the 🗑️ button on the payment, or Delete inside its edit window
+    if (!p?.id || !window.confirm(t('delete_payment_confirm_x', { amount: inr(p.amount) }))) return false;
     setBusy(t('saving'));
-    const { error: e } = await supabase.from('saree_auction_payments').delete().eq('id', pay.id);
+    const { data: gone, error: e } = await supabase.from('saree_auction_payments').delete().eq('id', p.id).select('id');
     setBusy('');
-    if (e) { toast(errMsg(e, t), 'error'); return; }
-    setPay(null);
+    if (e) { toast(errMsg(e, t), 'error'); return false; }
+    if (!gone?.length) { toast(t('pay_not_changed'), 'error'); reload(true); return false; }
     toast(t('fest_deleted'), 'success');
     reload(true);
+    return true;
   };
+  const delPay = async () => { if (await removePay(pay)) setPay(null); };
 
   const onAdd = () => {
     if (tab === 'photos') setPhotoAdd({ photo_date: todayIST(), caption: '', files: [], previews: [] });
@@ -398,7 +407,7 @@ export default function Festival() {
                 </>
               ) : (
                 <BidderView groups={groups} sel={bidSel} onSel={setBidSel} canPay={isAdmin && !data.payMissing}
-                  onPay={newPay} onEditPay={editPay} onEditLot={isAdmin ? editLot : null} onPicture={openLot} />
+                  onPay={newPay} onEditPay={editPay} onDelPay={removePay} onEditLot={isAdmin ? editLot : null} onPicture={openLot} />
               )}
               {isAdmin && data.auction.length > 0 && <p className="hint">{t('auction_not_in_accounts')}</p>}
             </>

@@ -872,6 +872,8 @@ const D = {
   partial_hint: ['కొంత మొత్తం మాత్రమే ఇచ్చినా నమోదు చేయండి — మిగిలింది "ఇంకా రావాల్సింది"లో కనిపిస్తుంది', 'Part payments are fine – the rest shows as outstanding'],
   payment_saved: ['చెల్లింపు నమోదైంది ✅', 'Payment saved ✅'],
   delete_payment_confirm: ['ఈ చెల్లింపును తొలగించాలా?', 'Delete this payment?'],
+  delete_payment_confirm_x: ['{amount} చెల్లింపును తొలగించాలా?', 'Delete this payment of {amount}?'],
+  pay_not_changed: ['మార్పు జరగలేదు — మళ్లీ ప్రయత్నించండి (అడ్మిన్ మాత్రమే మార్చగలరు)', 'Nothing changed – please try again (only the admin can change payments)'],
   need_bidder: ['వేలంపాటదారు పేరు రాయండి', "Enter the bidder's name"],
   bid_paid_due_line: ['వేలం {bid} · చెల్లించింది {paid} · బాకీ {due}', 'Bid {bid} · paid {paid} · due {due}'],
   same_bidder_hint: ['ఒకే పేరు = ఒకే వేలంపాటదారు (మొత్తాలు, చెల్లింపుల కోసం). ఒకే పేరున్న ఇద్దరైతే పేరుతో పాటు గ్రామం కూడా రాయండి', 'Same name = same bidder (for totals and payments). For two people with the same name, add the village to the name'],
