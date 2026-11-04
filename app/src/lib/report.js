@@ -117,7 +117,7 @@ export function computeReport(data, lang, t) {
 }
 
 /** Draw the report on A4 canvases (one per page). */
-function drawReport(R, { t, lang, settings, year, preparedBy, logo }) {
+function drawReport(R, { t, lang, settings, year, preparedBy }) {
   const P = picker(lang);
   const pages = [];
   let g = null;
@@ -261,41 +261,53 @@ function drawReport(R, { t, lang, settings, year, preparedBy, logo }) {
     { label: t('total'), w: 0.18, align: 'right', num: true },
   ];
 
-  // ---------- page 1 header
+  // ---------- page 1: cover – centred, with borders (the summary starts on page 2)
   newPage();
-  if (logo) {
-    const s = 124, x = (W - s) / 2;
-    const sc = Math.max(s / logo.naturalWidth, s / logo.naturalHeight);
-    const lw = logo.naturalWidth * sc, lh = logo.naturalHeight * sc;
-    g.save();
-    g.beginPath();
-    g.arc(W / 2, y + s / 2, s / 2, 0, Math.PI * 2);
-    g.clip();
-    g.drawImage(logo, x + (s - lw) / 2, y + (s - lh) / 2, lw, lh);
-    g.restore();
-    g.strokeStyle = C.gold;
-    g.lineWidth = 4;
-    g.beginPath();
-    g.arc(W / 2, y + s / 2, s / 2 - 2, 0, Math.PI * 2);
-    g.stroke();
-    y += s + 16;
-  }
+  g.strokeStyle = C.maroon;
+  g.lineWidth = 6;
+  g.strokeRect(48, 48, W - 96, H - 96);
+  g.strokeStyle = C.saffron;
+  g.lineWidth = 2;
+  g.strokeRect(64, 64, W - 128, H - 128);
   const temple = P(settings.temple_name_te, settings.temple_name_en);
   const fest = P(settings.event_title_te, settings.event_title_en);
-  const village = P(settings.village_te, settings.village_en);
   const committee = P(settings.committee_name_te, settings.committee_name_en);
-  if (temple) para(temple, { size: 40, weight: 800, color: C.maroon, align: 'center', lh: 1.35, after: 2 });
-  if (village) para(village, { size: 23, color: C.muted, align: 'center', after: 0 });
-  if (committee) para(committee, { size: 24, weight: 600, color: C.sub, align: 'center', after: 0 });
-  if (fest) para(fest, { size: 27, weight: 700, color: C.saffron, align: 'center', after: 4 });
-  y += 8;
-  g.fillStyle = C.saffron;
-  g.fillRect(M, y, CW, 3);
-  y += 24;
-  para(t('rp_title'), { size: 34, weight: 800, align: 'center', after: 2 });
+  const village = P(settings.village_te, settings.village_en);
+  const address = [P(settings.address_te, settings.address_en), village].filter(Boolean).join(', ');
+  const fy = String(year || settings.event_year || '').trim();
+  const festLine = fest && fy && !fest.includes(fy) ? `${fest} - ${fy}` : fest || fy;
   const period = R.period ? ` · ${t('rp_period', { from: fmtDay(R.period[0], lang, true), to: fmtDay(R.period[1], lang, true) })}` : '';
-  para((year ? t('rp_records_of', { year }) : t('all_years')) + period, { size: 21, color: C.muted, align: 'center', after: 0 });
-  para(t('rp_prepared', { when: fmtDateTime(new Date(), lang), name: preparedBy || '–' }), { size: 20, color: C.muted, align: 'center', after: 6 });
+  const items = [
+    temple && { s: temple, size: 46, weight: 800, color: C.maroon, after: 16 },                 // 1. temple name
+    committee && { s: committee, size: 30, weight: 600, color: C.sub, after: 12 },              // 2. committee name
+    address && { s: address, size: 26, weight: 400, color: C.muted, after: 0 },                 // 3. street / address, village / town
+    festLine && { rule: true },
+    festLine && { s: festLine, size: 34, weight: 700, color: C.saffron, after: 0 },             // 4. festival title - year
+    { rule: true },
+    { s: t('rp_title'), size: 44, weight: 800, color: C.ink, after: 18 },                       // 5. report heading
+    { s: (year ? t('rp_records_of', { year }) : t('all_years')) + period, size: 24, weight: 400, color: C.muted, after: 10 },   // 6.
+    { s: t('rp_prepared', { when: fmtDateTime(new Date(), lang), name: preparedBy || '–' }), size: 22, weight: 400, color: C.muted, after: 0 },   // 7.
+  ].filter(Boolean);
+  const coverW = W - 2 * 130;
+  const RULE = 70;   // the short line between the groups, with its space
+  const laid = items.map((it) => {
+    if (it.rule) return { ...it, h: RULE };
+    font(it.size, it.weight);
+    const LH = Math.round(it.size * 1.4);
+    const lines = wrap(it.s, coverW);
+    return { ...it, LH, lines, h: lines.length * LH + it.after };
+  });
+  y = Math.max(110, (H - laid.reduce((a, it) => a + it.h, 0)) / 2);
+  laid.forEach((it) => {
+    if (it.rule) {
+      g.fillStyle = C.saffron;
+      g.fillRect(W / 2 - 80, y + RULE / 2 - 2, 160, 4);
+    } else {
+      it.lines.forEach((ln, i) => text(ln, W / 2, y + it.LH * i + it.LH / 2, { size: it.size, weight: it.weight, color: it.color, align: 'center' }));
+    }
+    y += it.h;
+  });
+  newPage();
 
   // ---------- summary: opening + receipts − payments = closing
   heading(t('rp_sec_summary'));
@@ -391,6 +403,7 @@ function drawReport(R, { t, lang, settings, year, preparedBy, logo }) {
   // ---------- footer on every page
   const left = [temple, fest].filter(Boolean).join(' · ');
   pages.forEach((c, i) => {
+    if (i === 0) return;   // no footer on the cover
     g = c.getContext('2d');
     g.fillStyle = C.line;
     g.fillRect(M, H - 78, CW, 2);
@@ -409,30 +422,6 @@ function drawReport(R, { t, lang, settings, year, preparedBy, logo }) {
   return pages;
 }
 
-/** The temple logo from Settings (skipped when it cannot be drawn into the PDF). */
-function loadLogo(url) {
-  if (!url) return Promise.resolve(null);
-  return new Promise((res) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const c = document.createElement('canvas');
-        c.width = 4;
-        c.height = 4;
-        c.getContext('2d').drawImage(img, 0, 0, 4, 4);
-        c.toDataURL();   // throws when the picture would block saving the page
-        res(img);
-      } catch {
-        res(null);
-      }
-    };
-    img.onerror = () => res(null);
-    setTimeout(() => res(null), 8000);
-    img.src = url;
-  });
-}
-
 async function toJpeg(canvas) {
   const blob = await new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('Could not make the page picture'))), 'image/jpeg', 0.88));
   return { blob, bytes: new Uint8Array(await blob.arrayBuffer()), w: canvas.width, h: canvas.height };
@@ -446,8 +435,7 @@ export async function makeReport({ year, lang, settings, preparedBy }) {
   const data = await fetchYear(year || null);
   const R = computeReport(data, lang, t);
   try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch { /* system fonts */ }
-  const logo = await loadLogo(s.logo_url);
-  const canvases = drawReport(R, { t, lang, settings: s, year, preparedBy, logo });
+  const canvases = drawReport(R, { t, lang, settings: s, year, preparedBy });
   const pages = [];
   for (const c of canvases) {
     pages.push(await toJpeg(c));

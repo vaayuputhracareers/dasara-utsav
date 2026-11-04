@@ -855,7 +855,7 @@ const D = {
   report_share_hint: ['షేర్ నొక్కి WhatsApp లో సభ్యుల గ్రూప్‌ను ఎంచుకోండి. నివేదిక పేజీలు క్రింద ఉన్నాయి.', 'Tap Share and choose the WhatsApp group of the members. The report pages are shown below.'],
   report_no_share: ['ఈ పరికరం నుండి నేరుగా షేర్ కాదు — PDF డౌన్‌లోడ్ చేసి ఆ ఫైల్‌ను WhatsApp లో పంపండి. నివేదిక పేజీలు క్రింద ఉన్నాయి.', 'This device cannot share directly – download the PDF and send the file on WhatsApp. The report pages are shown below.'],
   report_downloaded: ['PDF డౌన్‌లోడ్ అయింది ✅', 'PDF downloaded ✅'],
-  rp_title: ['లెక్కల సారాంశ నివేదిక', 'Accounts summary report'],
+  rp_title: ['లెక్కల సారాంశ నివేదిక', 'Accounts Summary Report'],
   rp_records_of: ['{year} సంవత్సరం లెక్కలు', 'Accounts of {year}'],
   rp_period: ['{from} నుండి {to} వరకు', '{from} to {to}'],
   rp_prepared: ['తయారు చేసిన తేదీ {when} · {name}', 'Prepared on {when} by {name}'],
