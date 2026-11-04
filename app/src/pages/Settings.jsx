@@ -7,7 +7,7 @@ import { errMsg } from '../lib/errors.js';
 import { compressImage, imageExt } from '../lib/image.js';
 import { DEFAULT_TEMPLATE, TEMPLATE_TAGS, appBaseUrl, buildReceiptMessage } from '../lib/receipt.js';
 import { Page, Field, Switch, useToast } from '../components/ui.jsx';
-import { ExportCard, DeleteCard, useDbVersion } from '../components/DataTools.jsx';
+import { ExportCard, ReportCard, DeleteCard, useDbVersion } from '../components/DataTools.jsx';
 import { REQUIRED_DB_VERSION } from '../lib/dbVersion.js';
 import { previewSplash } from '../lib/splash.js';
 
@@ -259,6 +259,7 @@ export default function SettingsPage() {
       {/* Admin-only data tools (this whole page is admin-only; the server checks again) */}
       <div id="data" className="sec-head">{t('data_sec_title')}</div>
       <ExportCard key={`export-${dataKey}`} />
+      <ReportCard key={`report-${dataKey}`} />
       <DeleteCard dbVersion={dbVersion} onCheckDb={checkDb} onDeleted={() => setDataKey((k) => k + 1)} />
     </Page>
   );

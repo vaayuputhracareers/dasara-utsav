@@ -443,3 +443,6 @@ ul.plain{margin:6px 0 0 18px;padding:0}
 .cc-total{display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-top:2px dashed var(--line);margin-top:12px;padding-top:10px;font-weight:800;color:var(--maroon)}
 .cc-total b{font-size:22px;font-weight:900;color:var(--ink,#222)}
 .cc-result{display:flex;flex-direction:column;gap:10px}
+/* change 28 – PDF accounts report */
+.report-pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.report-pages img{width:100%;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 2px 8px rgba(80,40,10,.08)}

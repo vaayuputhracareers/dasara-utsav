@@ -3,11 +3,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLang } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
-import { inr, fmtDateTime } from '../lib/format.js';
+import { inr, fmtDateTime, personName } from '../lib/format.js';
 import { errMsg } from '../lib/errors.js';
 import { REQUIRED_DB_VERSION } from '../lib/dbVersion.js';
 import { useDbVersion, DbUpdateNotice } from './DbUpdate.jsx';
 import * as DT from '../lib/dataTools.js';
+import { saveBlob } from '../lib/zip.js';
 import { Field, Modal, Seg, Spinner, Switch, useToast, copyText, PinInput } from './ui.jsx';
 import { isPin } from '../lib/supabase.js';
 
@@ -112,6 +113,82 @@ export function ExportCard() {
           {busy === 'xlsx' && <p className="hint">{progress}</p>}
           <LastExport last={last} />
           <p className="hint">{t('export_keep_safe')}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ PDF report (change 28) */
+// Accounts summary as a PDF to share with the members – in addition to the Excel backup above.
+export function ReportCard() {
+  const { t, lang } = useLang();
+  const toast = useToast();
+  const { profile } = useAuth();
+  const { settings } = useSettings();
+  const [years, setYears] = useState(null);
+  const [year, setYear] = useState(null);       // number | 'all'
+  const [rlang, setRlang] = useState(lang === 'te' ? 'te' : 'en');
+  const [busy, setBusy] = useState(false);
+  const [rep, setRep] = useState(null);         // { blob, name, title, urls, n }
+
+  useEffect(() => {
+    let alive = true;
+    DT.listDataYears().then((ys) => {
+      if (!alive) return;
+      setYears(ys);
+      setYear(ys.length ? ys[0] : 'all');
+    }).catch(() => { if (alive) { setYears([]); setYear('all'); } });
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => () => { (rep?.urls || []).forEach((u) => URL.revokeObjectURL(u)); }, [rep]);
+
+  const make = async () => {
+    setBusy(true);
+    setRep(null);
+    try {
+      const { makeReport } = await import('../lib/report.js');
+      const preparedBy = personName(profile, rlang) || profile?.mobile || '';
+      setRep(await makeReport({ year: year === 'all' ? null : year, lang: rlang, settings, preparedBy }));
+    } catch (e) { toast(errMsg(e, t), 'error', 6000); }
+    setBusy(false);
+  };
+  const file = rep ? new File([rep.blob], rep.name, { type: 'application/pdf' }) : null;
+  let canShare = false;
+  try { canShare = !!file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] }); } catch { canShare = false; }
+  const download = () => { saveBlob(rep.blob, rep.name); toast(t('report_downloaded'), 'success'); };
+  const share = async () => {
+    try { await navigator.share({ files: [file], title: rep.title }); } catch (e) { if (e?.name !== 'AbortError') download(); }
+  };
+  const pick = (setter) => (v) => { setter(v); setRep(null); };
+  const options = [...(years || []).map((v) => ({ value: v, label: String(v) })), { value: 'all', label: t('all_years') }];
+
+  return (
+    <div className="card pad-lg stack" data-testid="report-card">
+      <div className="card-title">{t('report_title')}</div>
+      <p className="small-text">{t('report_desc')}</p>
+      {years === null ? <Spinner sm /> : (
+        <>
+          <Field label={t('export_year')}><Seg options={options} value={year} onChange={pick(setYear)} /></Field>
+          <Field label={t('report_lang')}>
+            <Seg options={[{ value: 'te', label: 'తెలుగు' }, { value: 'en', label: 'English' }]} value={rlang} onChange={pick(setRlang)} />
+          </Field>
+          <button type="button" className="btn primary block" disabled={busy} onClick={make} data-testid="report-make">
+            {busy ? t('report_working') : t('report_make')}
+          </button>
+          {rep && (
+            <>
+              <div className="alert ok" data-testid="report-ready">{t('report_ready', { n: rep.n })}</div>
+              <div className={canShare ? 'grid2' : 'stack'}>
+                {canShare && <button type="button" className="btn wa" onClick={share} data-testid="report-share">{t('report_share')}</button>}
+                <button type="button" className={`btn ${canShare ? 'ghost' : 'primary'}`} onClick={download} data-testid="report-download">{t('report_download')}</button>
+              </div>
+              <p className="hint">{canShare ? t('report_share_hint') : t('report_no_share')}</p>
+              <div className="report-pages">
+                {rep.urls.map((u, i) => <img key={u} src={u} alt={t('rp_page', { i: i + 1, n: rep.n })} />)}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
