@@ -89,6 +89,7 @@ export default function CashBank() {
                 <div><small>{t('cb_with_committee')}</small><b className="num" data-testid="cb-committee">{inr(d.cash_with_committee)}</b></div>
                 <Link to="/handover"><small>{t('cb_with_members')} →</small><b className="num" data-testid="cb-members">{inr(d.cash_with_members)}</b></Link>
               </div>
+              <Link to="/cash-count" className="btn ghost sm block" data-testid="cb-count-link">🧮 {t('cc_open')}</Link>
               <div className="cb-calc">
                 <div className="lbl">{t('cb_how_calc')}</div>
                 {n(d.opening_cash) > 0 && <Line sign="+" label={t('cb_opening_line')} value={d.opening_cash} />}

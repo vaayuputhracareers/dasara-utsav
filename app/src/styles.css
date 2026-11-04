@@ -432,3 +432,14 @@ ul.plain{margin:6px 0 0 18px;padding:0}
 .viewer-actions{display:flex;gap:8px;margin-top:10px}
 .viewer-actions .btn{flex:1}
 .link-btn{background:none;border:0;padding:0;font:inherit;color:var(--maroon);font-weight:800;text-align:left;cursor:pointer;display:block}
+/* change 27 – cash in hand denominations */
+.cc-table{display:flex;flex-direction:column;gap:6px}
+.cc-row{display:grid;grid-template-columns:58px 12px minmax(0,1fr) minmax(92px,auto);align-items:center;gap:8px}
+.cc-d{font-weight:900;font-size:16px;color:var(--maroon)}
+.cc-row i{font-style:normal;color:var(--muted);font-weight:800;text-align:center}
+.cc-row .input{min-height:42px;padding:7px 10px;font-size:18px;font-weight:800;text-align:center}
+.cc-row b{text-align:right;font-size:15px;font-weight:900}
+.card-title.cc-coins{margin-top:14px}
+.cc-total{display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-top:2px dashed var(--line);margin-top:12px;padding-top:10px;font-weight:800;color:var(--maroon)}
+.cc-total b{font-size:22px;font-weight:900;color:var(--ink,#222)}
+.cc-result{display:flex;flex-direction:column;gap:10px}
