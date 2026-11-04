@@ -148,6 +148,13 @@ create table if not exists public.handovers (
   received_by      uuid not null references public.profiles(id),
   received_at      timestamptz not null default now()
 );
+-- Added in version 14 – a payment to a member (minus amount) is made in cash or through the temple UPI
+alter table public.handovers add column if not exists payment_mode text not null default 'cash';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'handovers_payment_mode_chk') then
+    alter table public.handovers add constraint handovers_payment_mode_chk check (payment_mode in ('cash','upi'));
+  end if;
+end $$;
 
 -- gap-free receipt counter (a failed save never wastes a number)
 create table if not exists public.receipt_counter (
@@ -453,7 +460,7 @@ language plpgsql stable security definer set search_path = '' as $$
 declare
   v_cash_don numeric; v_upi_don numeric; v_exp numeric;
   v_open_cash numeric; v_open_bank numeric; v_dep numeric; v_wd numeric; v_tr bigint;
-  v_cexp numeric; v_uexp numeric; v_setoff numeric; v_pbc numeric; v_pbu numeric; v_ho numeric;
+  v_cexp numeric; v_uexp numeric; v_setoff numeric; v_pbc numeric; v_pbu numeric; v_ho numeric; v_ho_upi numeric;
   v_admin numeric; v_members numeric; v_owed numeric; v_committee numeric; v_bank numeric;
 begin
   select coalesce(sum(amount) filter (where payment_mode = 'cash'), 0), coalesce(sum(amount) filter (where payment_mode = 'upi'), 0)
@@ -469,13 +476,14 @@ begin
          coalesce(sum(amount) filter (where settled_mode = 'cash'), 0),
          coalesce(sum(amount) filter (where settled_mode = 'upi'), 0)
     into v_exp, v_cexp, v_uexp, v_setoff, v_pbc, v_pbu from public.expenses where status = 'approved';
-  select coalesce(sum(amount_received), 0) into v_ho from public.handovers;
+  select coalesce(sum(amount_received), 0), coalesce(sum(amount_received) filter (where payment_mode = 'upi'), 0)
+    into v_ho, v_ho_upi from public.handovers;   -- version 14: UPI payments to members come from the bank
   select coalesce(sum(balance) filter (where role = 'admin'), 0),
          coalesce(sum(balance) filter (where role <> 'admin' and balance > 0), 0),
          coalesce(-sum(balance) filter (where role <> 'admin' and balance < 0), 0)
     into v_admin, v_members, v_owed from public.member_balances_internal();
-  v_committee := v_open_cash + v_admin + v_ho - v_cexp - v_pbc - v_dep + v_wd;
-  v_bank := v_open_bank + v_upi_don - v_uexp - v_pbu + v_dep - v_wd;
+  v_committee := v_open_cash + v_admin + (v_ho - v_ho_upi) - v_cexp - v_pbc - v_dep + v_wd;
+  v_bank := v_open_bank + v_upi_don - v_uexp - v_pbu + v_dep - v_wd + v_ho_upi;
   return jsonb_build_object(
     'opening_cash',        v_open_cash,
     'opening_bank',        v_open_bank,
@@ -491,6 +499,7 @@ begin
     'paid_back_cash',      v_pbc,
     'paid_back_upi',       v_pbu,
     'handed_over_total',   v_ho,
+    'handover_upi_out',    -v_ho_upi,
     'deposits_total',      v_dep,
     'withdrawals_total',   v_wd,
     'transfers_count',     v_tr);
@@ -1162,27 +1171,64 @@ begin
 end $$;
 
 -- Day-end cash handover (admin confirms money received from a member)
-create or replace function public.confirm_handover(p_member uuid, p_amount numeric, p_note text default null)
+drop function if exists public.confirm_handover(uuid, numeric, text);   -- version 14 adds p_mode
+create or replace function public.confirm_handover(p_member uuid, p_amount numeric, p_note text default null, p_mode text default 'cash')
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare v_expected numeric; v_id uuid; v_uid uuid := auth.uid();
 begin
   if not public.is_admin() then raise exception 'not_allowed'; end if;
   if p_member = v_uid then raise exception 'cannot_handover_self'; end if;
   if p_amount is null or p_amount = 0 then raise exception 'invalid_amount'; end if;
+  if coalesce(p_mode, 'cash') not in ('cash', 'upi') then raise exception 'invalid_mode'; end if;
   perform pg_advisory_xact_lock(hashtext(p_member::text));
   select balance into v_expected from public.member_balances_internal() where member_id = p_member;
   if v_expected is null then raise exception 'member_not_found'; end if;
-  insert into public.handovers (member_id, expected_amount, amount_received, note, received_by)
-  values (p_member, v_expected, p_amount, nullif(btrim(coalesce(p_note, '')), ''), v_uid)
+  insert into public.handovers (member_id, expected_amount, amount_received, note, received_by, payment_mode)
+  values (p_member, v_expected, p_amount, nullif(btrim(coalesce(p_note, '')), ''), v_uid, coalesce(p_mode, 'cash'))
   returning id into v_id;
   update public.donations set handover_id = v_id
    where collected_by = p_member and status = 'active' and payment_mode = 'cash' and handover_id is null;
   update public.expenses set handover_id = v_id
    where paid_by = p_member and status = 'approved' and handover_id is null and settled_mode is null;
   perform public.write_audit('handover_confirmed', 'handover', v_id::text,
-    jsonb_build_object('member', p_member, 'expected', v_expected, 'received', p_amount));
+    jsonb_build_object('member', p_member, 'expected', v_expected, 'received', p_amount, 'mode', coalesce(p_mode, 'cash')));
   return jsonb_build_object('id', v_id, 'expected', v_expected, 'received', p_amount,
                             'difference', v_expected - p_amount);
+end $$;
+
+-- Version 14 – correct or remove an earlier cash handover / payment to a member (admin only). The member's balance and
+-- the cash / bank position are worked out again automatically; a removed entry frees its receipts and expenses again.
+create or replace function public.admin_update_handover(p_id uuid, p_amount numeric, p_mode text default null, p_note text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare h public.handovers%rowtype;
+begin
+  if not public.is_admin() then raise exception 'not_allowed'; end if;
+  select * into h from public.handovers where id = p_id for update;
+  if not found then raise exception 'not_found'; end if;
+  if p_amount is null or p_amount = 0 or sign(p_amount) <> sign(h.amount_received) then raise exception 'invalid_amount'; end if;
+  if coalesce(p_mode, h.payment_mode) not in ('cash', 'upi') then raise exception 'invalid_mode'; end if;
+  update public.handovers
+     set amount_received = p_amount, payment_mode = coalesce(p_mode, h.payment_mode), note = nullif(btrim(coalesce(p_note, '')), '')
+   where id = p_id;
+  perform public.write_audit('handover_edited', 'handover', p_id::text,
+    jsonb_build_object('member', h.member_id, 'amount', jsonb_build_array(h.amount_received, p_amount),
+                       'mode', jsonb_build_array(h.payment_mode, coalesce(p_mode, h.payment_mode))));
+  return (select to_jsonb(x) from public.handovers x where x.id = p_id);
+end $$;
+
+create or replace function public.admin_delete_handover(p_id uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare h public.handovers%rowtype;
+begin
+  if not public.is_admin() then raise exception 'not_allowed'; end if;
+  select * into h from public.handovers where id = p_id for update;
+  if not found then raise exception 'not_found'; end if;
+  update public.donations set handover_id = null where handover_id = p_id;
+  update public.expenses  set handover_id = null where handover_id = p_id;
+  delete from public.handovers where id = p_id;
+  perform public.write_audit('handover_deleted', 'handover', p_id::text,
+    jsonb_build_object('member', h.member_id, 'amount', h.amount_received, 'mode', h.payment_mode, 'at', h.received_at));
+  return jsonb_build_object('id', p_id, 'amount', h.amount_received);
 end $$;
 
 create or replace function public.cancel_donation(p_id uuid, p_reason text)
@@ -1423,8 +1469,9 @@ end $$;
 --   8–11 = cash in hand / bank, opening balance, deleting members
 --   12 = day-wise photos, saree donors, saree auction, members see all donations / expenses
 --   13 = saree auction: totals, bidder-wise view, part payments
+--   14 = payments to members: cash / temple UPI, edit and delete earlier handovers / payments
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 13 $$;
+language sql immutable set search_path = '' as $$ select 14 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1539,12 +1586,12 @@ grant execute on function public.get_public_page(text) to anon, authenticated;
 grant execute on function public.get_receipt(text) to anon, authenticated;
 grant execute on function public.is_admin(), public.is_active_user() to authenticated;
 revoke execute on function public.get_dashboard(), public.get_my_summary(), public.get_member_balances(),
-  public.confirm_handover(uuid, numeric, text), public.cancel_donation(uuid, text),
+  public.confirm_handover(uuid, numeric, text, text), public.cancel_donation(uuid, text),
   public.set_upi_verified(uuid, boolean), public.mark_receipt_shared(uuid),
   public.review_expense(uuid, boolean, text), public.create_member_invite(text, text, text, text),
   public.admin_reset_password(uuid, text), public.regenerate_public_slug() from public, anon;
 grant execute on function public.get_dashboard(), public.get_my_summary(), public.get_member_balances(),
-  public.confirm_handover(uuid, numeric, text), public.cancel_donation(uuid, text),
+  public.confirm_handover(uuid, numeric, text, text), public.cancel_donation(uuid, text),
   public.set_upi_verified(uuid, boolean), public.mark_receipt_shared(uuid),
   public.review_expense(uuid, boolean, text), public.create_member_invite(text, text, text, text),
   public.admin_reset_password(uuid, text), public.regenerate_public_slug() to authenticated;
@@ -1554,6 +1601,8 @@ revoke execute on function public.settle_expense(uuid, text, text), public.get_f
 grant execute on function public.settle_expense(uuid, text, text), public.get_finance_summary() to authenticated;
 revoke execute on function public.get_all_donations(), public.get_all_expenses() from public, anon;
 grant execute on function public.get_all_donations(), public.get_all_expenses() to authenticated;
+revoke execute on function public.admin_update_handover(uuid, numeric, text, text), public.admin_delete_handover(uuid) from public, anon;
+grant execute on function public.admin_update_handover(uuid, numeric, text, text), public.admin_delete_handover(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 6. FILE STORAGE (bill photos = private, logo = public)

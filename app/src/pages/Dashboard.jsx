@@ -64,6 +64,7 @@ export default function Dashboard() {
           { Item: 'Committee owes members', Amount: Number(d.owed_to_members) },
           { Item: 'Member expenses paid back – cash', Amount: Number(d.paid_back_cash) },
           { Item: 'Member expenses paid back – temple UPI', Amount: Number(d.paid_back_upi) },
+          { Item: 'Paid to members – temple UPI (day-end cash page)', Amount: Number(d.handover_upi_out || 0) },
         ] : []),
         { Item: 'Report time', Amount: fmtDateTime(new Date(), 'en') },
       ];

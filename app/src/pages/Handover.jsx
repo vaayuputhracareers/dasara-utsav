@@ -4,7 +4,7 @@ import { useLang } from '../lib/i18n.jsx';
 import { useAsync } from '../lib/useAsync.js';
 import { errMsg } from '../lib/errors.js';
 import { inr, fmtDateTime, fmtTime, fmtDate, fmtDay, personName } from '../lib/format.js';
-import { Page, Spinner, Empty, Modal, Field, useToast } from '../components/ui.jsx';
+import { Page, Spinner, Empty, Modal, Field, useToast, Seg } from '../components/ui.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { PayBackModal } from '../components/Settle.jsx';
 
@@ -65,6 +65,8 @@ export default function Handover() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  const [mode, setMode] = useState('cash');   // version 14 – payment to a member: cash / temple UPI
+  const [edit, setEdit] = useState(null);     // version 14 – edit an earlier entry
 
   const { data, loading, reload } = useAsync(async () => {
     const [b, h] = await Promise.all([
@@ -82,7 +84,7 @@ export default function Handover() {
   const settled = balances.filter((m) => Number(m.balance) === 0 && !canPayBack(m) && Number(m.cash_collected) > 0);
   const totalWith = balances.reduce((a, m) => a + Math.max(0, Number(m.balance)), 0);
 
-  const open = (m) => { setConfirm(m); setAmount(String(Math.abs(Number(m.balance)))); setNote(''); };
+  const open = (m) => { setConfirm(m); setAmount(String(Math.abs(Number(m.balance)))); setNote(''); setMode('cash'); };
   const due = confirm ? Number(confirm.balance) : 0;
   const entered = Number(amount || 0);
   const diff = Math.abs(due) - entered;
@@ -91,11 +93,39 @@ export default function Handover() {
     if (!(entered > 0)) return toast(t('amount_invalid'), 'error');
     setBusy(true);
     const p_amount = due < 0 ? -entered : entered;
-    const { error } = await supabase.rpc('confirm_handover', { p_member: confirm.member_id, p_amount, p_note: note });
+    const args = { p_member: confirm.member_id, p_amount, p_note: note };
+    if (due < 0 && mode === 'upi') args.p_mode = 'upi';   // cash = as before (works on older databases too)
+    const { error } = await supabase.rpc('confirm_handover', args);
     setBusy(false);
     if (error) return toast(errMsg(error, t), 'error', 5000);
     toast(t('handover_done', { name: personName(confirm, lang), amount: inr(entered) }), 'success', 4500);
     setConfirm(null);
+    reload(true);
+  };
+
+  // ---------- version 14: edit / delete an earlier entry (balances are worked out again) ----------
+  const openEdit = (h) => setEdit({ row: h, out: Number(h.amount_received) < 0, amount: String(Math.abs(Number(h.amount_received))), mode: h.payment_mode === 'upi' ? 'upi' : 'cash', note: h.note || '' });
+  const saveEdit = async () => {
+    const v = Number(edit.amount || 0);
+    if (!(v > 0)) return toast(t('amount_invalid'), 'error');
+    setBusy(true);
+    const { error } = await supabase.rpc('admin_update_handover', { p_id: edit.row.id, p_amount: edit.out ? -v : v, p_mode: edit.out ? edit.mode : null, p_note: edit.note });
+    setBusy(false);
+    if (error) return toast(errMsg(error, t), 'error', 6000);
+    toast(t('handover_updated'), 'success');
+    setEdit(null);
+    reload(true);
+  };
+  const delHandover = async (h) => {
+    const amt = inr(Math.abs(Number(h.amount_received)));
+    const who = personName(h.member, lang);
+    if (!window.confirm(Number(h.amount_received) < 0 ? t('handover_delete_confirm_out', { name: who, amount: amt }) : t('handover_delete_confirm_in', { name: who, amount: amt }))) return;
+    setBusy(true);
+    const { error } = await supabase.rpc('admin_delete_handover', { p_id: h.id });
+    setBusy(false);
+    if (error) return toast(errMsg(error, t), 'error', 6000);
+    toast(t('fest_deleted'), 'success');
+    setEdit(null);
     reload(true);
   };
 
@@ -161,6 +191,11 @@ export default function Handover() {
                         <div className="sub-t num">{fmtDateTime(h.received_at, lang)} · {t('received_by', { name: personName(h.receiver, lang) })}</div>
                         {h.note && <div className="sub-t">📝 {h.note}</div>}
                         {df !== 0 && <span className={`badge ${df > 0 ? 'orange' : 'blue'} num`}>{t('expected_x', { amount: inr(h.expected_amount) })}</span>}
+                        {Number(h.amount_received) < 0 && <span className="badge blue" data-testid="handover-mode">{t('paid_to_member_badge', { mode: h.payment_mode === 'upi' ? `📱 ${t('temple_upi')}` : `💵 ${t('cash')}` })}</span>}
+                        <div className="row" style={{ gap: 8, marginTop: 6 }}>
+                          <button type="button" className="btn ghost xs" disabled={busy} onClick={() => openEdit(h)} data-testid="handover-edit">✏️ {t('edit')}</button>
+                          <button type="button" className="btn ghost xs danger-t" disabled={busy} onClick={() => delHandover(h)} data-testid="handover-delete">🗑️ {t('delete')}</button>
+                        </div>
                       </div>
                       <div className="amt" style={{ color: 'var(--green)' }}>{inr(h.amount_received)}</div>
                     </div>
@@ -176,11 +211,28 @@ export default function Handover() {
           <div className="stack">
             <div className="card stat warn"><small>{due < 0 ? t('committee_owes') : t('amount_due')}</small><b>{inr(Math.abs(due))}</b><em className="num">{t('breakdown', { cash: inr(confirm.cash_collected), exp: inr(confirm.expenses_approved), ho: inr(confirm.handed_over) })}</em></div>
             <Field label={due < 0 ? t('amount_paid_to', { name: personName(confirm, lang) }) : t('amount_received')}><input className="input big" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} autoFocus /></Field>
+            {due < 0 && <Field label={t('pay_mode_l')}><Seg value={mode} onChange={setMode} options={[{ value: 'cash', label: `💵 ${t('cash')}` }, { value: 'upi', label: `📱 ${t('temple_upi')}` }]} /></Field>}
             {entered > 0 && diff > 0 && <div className="alert warn">{t('short_by', { amount: inr(diff) })}</div>}
             {entered > 0 && diff < 0 && <div className="alert info">{t('extra_by', { amount: inr(-diff) })}</div>}
             <Field label={t('note')} optional><input className="input" value={note} placeholder={t('handover_note_ph')} onChange={(e) => setNote(e.target.value)} /></Field>
             {due < 0 && v7 && Number(confirm.setoff_open) > 0 && <p className="hint">💡 {t('record_payment_hint')}</p>}
             <button className="btn ok block" style={{ padding: 14 }} disabled={busy} onClick={submit}>{busy ? t('saving') : due < 0 ? t('confirm_paid') : t('confirm_received')}</button>
+          </div>
+        )}
+      </Modal>
+      <Modal open={!!edit} onClose={() => !busy && setEdit(null)} title={edit ? `✏️ ${personName(edit.row.member, lang)}` : ''}>
+        {edit && (
+          <div className="stack" data-testid="handover-edit-form">
+            <Field label={edit.out ? t('amount_paid_to', { name: personName(edit.row.member, lang) }) : t('amount_received')}>
+              <input className="input big" inputMode="decimal" value={edit.amount} onChange={(e) => setEdit((x) => ({ ...x, amount: e.target.value.replace(/[^0-9.]/g, '') }))} data-testid="handover-edit-amount" />
+            </Field>
+            {edit.out && <Field label={t('pay_mode_l')}><Seg value={edit.mode} onChange={(v) => setEdit((x) => ({ ...x, mode: v }))} options={[{ value: 'cash', label: `💵 ${t('cash')}` }, { value: 'upi', label: `📱 ${t('temple_upi')}` }]} /></Field>}
+            <Field label={t('note')} optional><input className="input" value={edit.note} onChange={(e) => setEdit((x) => ({ ...x, note: e.target.value }))} /></Field>
+            <p className="hint">{t('handover_edit_hint')}</p>
+            <div className="grid2">
+              <button className="btn ghost danger-t" disabled={busy} onClick={() => delHandover(edit.row)}>🗑️ {t('delete')}</button>
+              <button className="btn primary" disabled={busy} onClick={saveEdit} data-testid="handover-save">{busy ? t('saving') : t('save')}</button>
+            </div>
           </div>
         )}
       </Modal>

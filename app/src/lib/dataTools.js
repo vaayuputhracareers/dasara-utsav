@@ -222,6 +222,7 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     'Member Mobile': people[h.member_id]?.mobile || '',
     Due: n2(h.expected_amount),
     Received: n2(h.amount_received),
+    Mode: h.payment_mode === 'upi' ? 'UPI' : 'Cash',
     Difference: n2(Number(h.expected_amount) - Number(h.amount_received)),
     'Received By': nameOf(people[h.received_by]),
     Note: h.note || '',
@@ -308,14 +309,16 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
   const memberBal = memberRows.filter((r) => r.Role !== 'Admin').map((r) => r['Cash Balance']);
   const withMembers = n2(memberBal.reduce((a, b) => a + Math.max(b, 0), 0));
   const owed = n2(memberBal.reduce((a, b) => a + Math.max(-b, 0), 0));
-  const bankBal = n2(openBank + sum(upi) - sum(committeeUpiExp) - sum(backUpi) + sum(deposits) - sum(withdrawals));
-  const cashInHand = n2(openCash + sum(cash) - sum(committeeCashExp) - sum(setOff) - sum(backCash) - sum(deposits) + sum(withdrawals) + owed);
+  const hoUpi = sum(handovers.filter((h) => h.payment_mode === 'upi'), (h) => h.amount_received);   // version 14 – paid to members by temple UPI (minus)
+  const bankBal = n2(openBank + sum(upi) - sum(committeeUpiExp) - sum(backUpi) + sum(deposits) - sum(withdrawals) + hoUpi);
+  const cashInHand = n2(openCash + sum(cash) - sum(committeeCashExp) - sum(setOff) - sum(backCash) - sum(deposits) + sum(withdrawals) + owed - hoUpi);
   const cashBankRows = [
     ['CASH IN HAND (with committee + with members)', '', cashInHand],
     ['      With the committee (admin)', '', n2(cashInHand - withMembers)],
     ['      Still with members', '', withMembers],
     ['CASH AT BANK', '', bankBal],
     ...(owed > 0 ? [['Committee owes members (they spent their own money)', '', owed]] : []),
+    ...(hoUpi !== 0 ? [['Paid to members by temple UPI (day-end cash page)', '', n2(-hoUpi)]] : []),
     ['Cash deposited into bank', deposits.length, sum(deposits)],
     ['Cash withdrawn from bank', withdrawals.length, sum(withdrawals)],
   ];

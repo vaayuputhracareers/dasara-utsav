@@ -98,6 +98,7 @@ export default function CashBank() {
                 <Line sign="−" label={t('cb_paid_back_cash')} value={d.paid_back_cash} />
                 <Line sign="−" label={t('cb_deposited')} value={d.deposits_total} />
                 <Line sign="+" label={t('cb_withdrawn')} value={d.withdrawals_total} />
+                {n(d.handover_upi_out) !== 0 && <Line sign="+" label={t('cb_member_pay_upi_cash')} value={d.handover_upi_out} />}
                 {owed > 0 && <Line sign="+" label={t('cb_owed_add')} value={owed} />}
                 <Line sign="=" label={t('cash_in_hand')} value={d.cash_in_hand} total />
               </div>
@@ -111,6 +112,7 @@ export default function CashBank() {
                 <Line sign="+" label={t('cb_upi_donations')} value={d.upi_total} />
                 <Line sign="−" label={t('cb_upi_exp')} value={d.committee_upi_exp} />
                 <Line sign="−" label={t('cb_paid_back_upi')} value={d.paid_back_upi} />
+                {n(d.handover_upi_out) !== 0 && <Line sign="−" label={t('cb_member_pay_upi')} value={d.handover_upi_out} />}
                 <Line sign="+" label={t('cb_deposited')} value={d.deposits_total} />
                 <Line sign="−" label={t('cb_withdrawn')} value={d.withdrawals_total} />
                 <Line sign="=" label={t('cash_at_bank')} value={d.bank_balance} total />
