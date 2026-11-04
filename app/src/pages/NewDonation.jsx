@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, cleanMobile, isValidMobile } from '../lib/supabase.js';
 import { useLang } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { errMsg } from '../lib/errors.js';
+import { getDbVersion } from '../lib/dbVersion.js';
 import { num, inr, personName } from '../lib/format.js';
 import { upiLink } from '../lib/receipt.js';
 import { Page, Field, Seg, Modal, useToast, MobileInput } from '../components/ui.jsx';
@@ -16,7 +17,7 @@ const newId = () => (window.crypto?.randomUUID ? window.crypto.randomUUID()
 
 export default function NewDonation() {
   const { t, P, L, lang } = useLang();
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const { settings } = useSettings();
   const nav = useNavigate();
   const toast = useToast();
@@ -30,6 +31,26 @@ export default function NewDonation() {
   const [upiOpen, setUpiOpen] = useState(false);
   const [clientId] = useState(newId); // same id on retry → never a duplicate receipt
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+
+  // version 15 – admin: record a donation on behalf of a member (remembered until the app is closed)
+  const [members, setMembers] = useState([]);
+  const [canBehalf, setCanBehalf] = useState(false);
+  const [onBehalf, setOnBehalf] = useState(() => sessionStorage.getItem('utsav.onBehalf') || '');
+  useEffect(() => {
+    if (!isAdmin || !profile?.id) return undefined;
+    let live = true;
+    (async () => {
+      const v = await getDbVersion();
+      if (!live || !(v >= 15)) return;   // older database: always "me"
+      const { data } = await supabase.from('profiles').select('id, full_name, name_te, role, status').eq('status', 'active').order('full_name');
+      if (!live) return;
+      setMembers((data || []).filter((m) => m.id !== profile.id));
+      setCanBehalf(true);
+    })();
+    return () => { live = false; };
+  }, [isAdmin, profile?.id]);
+  const behalf = canBehalf ? members.find((m) => m.id === onBehalf) || null : null;
+  const pickBehalf = (v) => { setOnBehalf(v); if (v) sessionStorage.setItem('utsav.onBehalf', v); else sessionStorage.removeItem('utsav.onBehalf'); };
 
   const validate = () => {
     const er = {};
@@ -52,7 +73,7 @@ export default function NewDonation() {
       donor_name: f.donor_name.trim(), mobile: f.mobile ? cleanMobile(f.mobile) : null, amount, payment_mode: f.payment_mode,
       village: f.village.trim() || null, gotram: f.gotram.trim() || null,
       purpose_te: p?.te || null, purpose_en: p?.en || null, notes: f.notes.trim() || null,
-      upi_ref: f.payment_mode === 'upi' ? (f.upi_ref.trim() || null) : null, collected_by: profile.id,
+      upi_ref: f.payment_mode === 'upi' ? (f.upi_ref.trim() || null) : null, collected_by: behalf ? behalf.id : profile.id,
     };
     let { data, error } = await supabase.from('donations').insert(row).select().single();
     if (error && (error.code === '23505' || /donations_pkey|duplicate key/i.test(error.message || ''))) {
@@ -69,8 +90,19 @@ export default function NewDonation() {
   const upiText = settings.upi_id ? upiLink({ upiId: settings.upi_id, payee: settings.upi_payee_name || L(settings, 'temple_name'), amount: f.amount, note: `${settings.receipt_prefix || ''} ${f.donor_name}`.trim() }) : '';
 
   return (
-    <Page title={t('nav_new_donation')} sub={t('collecting_as', { name: personName(profile, lang) })}>
+    <Page title={t('nav_new_donation')} sub={behalf ? t('collecting_for', { name: personName(behalf, lang) }) : t('collecting_as', { name: personName(profile, lang) })}>
       <form className="card pad-lg stack" onSubmit={submit} noValidate>
+        {canBehalf && members.length > 0 && (
+          <div className="stack tight" style={behalf ? { background: 'var(--orange-l)', borderRadius: 12, padding: 10 } : undefined} data-testid="on-behalf">
+            <Field label={t('collected_by_l')}>
+              <select className="input" value={behalf ? behalf.id : ''} onChange={(e) => pickBehalf(e.target.value)} data-testid="on-behalf-select">
+                <option value="">{t('collected_by_me', { name: personName(profile, lang) })}</option>
+                {members.map((m) => <option key={m.id} value={m.id}>{personName(m, lang)}{m.role === 'admin' ? ' (admin)' : ''}</option>)}
+              </select>
+            </Field>
+            {behalf && <p className="hint" style={{ margin: 0 }} data-testid="on-behalf-hint">✍️ {t('on_behalf_hint', { name: personName(behalf, lang) })}</p>}
+          </div>
+        )}
         <Field label={`${t('donor_name')} *`} error={errors.donor_name}>
           <input className={`input ${errors.donor_name ? 'bad' : ''}`} value={f.donor_name} onChange={(e) => set('donor_name', e.target.value)} autoComplete="off" />
         </Field>

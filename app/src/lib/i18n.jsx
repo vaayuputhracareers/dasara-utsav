@@ -166,6 +166,13 @@ const D = {
   amount_invalid: ['సరైన మొత్తం ఇవ్వండి', 'Enter a valid amount'],
   confirm_big_amount: ['₹{amount} — ఈ మొత్తం సరైనదేనా?', '₹{amount} — is this amount correct?'],
   collecting_as: ['{name} · సభ్యుడు', '{name} · Collector'],
+  // change 25 – admin records a donation on behalf of a member
+  collecting_for: ['{name} తరపున నమోదు', 'Recording for {name}'],
+  collected_by_l: ['వసూలు చేసినవారు', 'Collected by'],
+  collected_by_me: ['నేను — {name}', 'Me – {name}'],
+  on_behalf_hint: ['ఈ విరాళం {name} వసూలు చేసినట్లు నమోదవుతుంది (నగదైతే వారి చేతిలోని నగదులో కలుస్తుంది). రసీదులో వారి పేరు వస్తుంది', 'This donation is recorded as collected by {name} (cash counts in their cash in hand). The receipt shows their name'],
+  entered_by_l: ['నమోదు చేసినవారు', 'Entered by'],
+  by_admin_badge: ['అడ్మిన్ నమోదు', 'entered by admin'],
 
   // receipt done
   donation_recorded: ['విరాళం నమోదైంది', 'Donation recorded'],

@@ -108,7 +108,7 @@ export default function Donations() {
                 <div className="grow">
                   <div className="main-t">{d.donor_name}</div>
                   <div className="sub-t num">{d.receipt_no} · {fmtDate(d.collected_at, lang)} {fmtTime(d.collected_at)}{isAdmin && d.collector ? ` · ${personName(d.collector, lang)}` : ''}</div>
-                  <div style={{ marginTop: 3 }}><DonationBadges d={d} />{!d.shared_at && d.status === 'active' && <span className="badge grey">WhatsApp ✗</span>}</div>
+                  <div style={{ marginTop: 3 }}><DonationBadges d={d} />{d.entered_by && d.entered_by !== d.collected_by && <span className="badge blue" data-testid="by-admin">✍️ {t('by_admin_badge')}</span>}{!d.shared_at && d.status === 'active' && <span className="badge grey">WhatsApp ✗</span>}</div>
                 </div>
                 <div className="amt">{inr(d.amount)}<div className="sub-t" style={{ fontWeight: 700 }}>{d.payment_mode === 'upi' ? 'UPI' : t('cash')}</div></div>
               </div>

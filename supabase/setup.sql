@@ -372,6 +372,9 @@ create table if not exists public.audit_log (
   details    jsonb
 );
 
+-- Added in version 15 – an admin can record a donation on behalf of a member: collected_by = that member,
+-- entered_by = the login that typed it (shown as "Entered by" when it is not the collector)
+alter table public.donations add column if not exists entered_by uuid references public.profiles(id) on delete set null;
 create index if not exists donations_collected_by_idx on public.donations (collected_by);
 create index if not exists donations_collected_at_idx on public.donations (collected_at desc);
 create index if not exists donations_handover_idx     on public.donations (handover_id);
@@ -644,7 +647,13 @@ declare v_prefix text; v_no bigint;
 begin
   if auth.uid() is not null then
     if not public.is_active_user() then raise exception 'not_allowed'; end if;
-    new.collected_by := auth.uid();
+    new.entered_by := auth.uid();
+    -- version 15: an admin may record a donation on behalf of an active member; everyone else collects for themselves
+    if new.collected_by is null or new.collected_by = auth.uid() or not public.is_admin() then
+      new.collected_by := auth.uid();
+    elsif not exists (select 1 from public.profiles p where p.id = new.collected_by and p.status = 'active') then
+      raise exception 'member_not_found';
+    end if;
   end if;
   -- validate first, so a rejected entry never uses up a receipt number
   if new.donor_name is null or btrim(new.donor_name) = '' then raise exception 'donor_name_required'; end if;
@@ -688,6 +697,7 @@ begin
   new.verify_token := old.verify_token;
   new.collected_by := old.collected_by;
   new.collected_at := old.collected_at;
+  new.entered_by   := old.entered_by;
   new.mobile       := public.normalize_mobile(new.mobile);
   new.updated_at   := now();
   if new.status is distinct from old.status
@@ -859,7 +869,7 @@ create policy donations_select on public.donations for select to authenticated
   using (collected_by = auth.uid() or public.is_admin());
 drop policy if exists donations_insert on public.donations;
 create policy donations_insert on public.donations for insert to authenticated
-  with check (public.is_active_user() and collected_by = auth.uid());
+  with check (public.is_active_user() and (collected_by = auth.uid() or public.is_admin()));   -- version 15: admin on behalf of a member
 drop policy if exists donations_update on public.donations;
 create policy donations_update on public.donations for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -1470,8 +1480,9 @@ end $$;
 --   12 = day-wise photos, saree donors, saree auction, members see all donations / expenses
 --   13 = saree auction: totals, bidder-wise view, part payments
 --   14 = payments to members: cash / temple UPI, edit and delete earlier handovers / payments
+--   15 = admin records a donation on behalf of a member (Collected by / Entered by)
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 14 $$;
+language sql immutable set search_path = '' as $$ select 15 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts

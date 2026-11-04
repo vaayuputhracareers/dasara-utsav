@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase, cleanMobile, isValidMobile } from '../lib/supabase.js';
 import { useLang } from '../lib/i18n.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -28,6 +28,12 @@ export default function DonationDetail({ d, onClose, onChanged }) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [f, setF] = useState(null);
+  const [enteredBy, setEnteredBy] = useState(null);   // version 15 – admin entered it on behalf of the collector
+  useEffect(() => {
+    if (!d?.entered_by || d.entered_by === d.collected_by) { setEnteredBy(null); return; }
+    supabase.from('profiles').select('full_name,name_te').eq('id', d.entered_by).maybeSingle()
+      .then(({ data }) => setEnteredBy(data || { full_name: 'Admin' }));
+  }, [d?.entered_by, d?.collected_by]);
   if (!d) return null;
   const collectorName = d.collector ? (d.collector.name_te || d.collector.full_name) : '';
   const msg = buildReceiptMessage(settings, d, collectorName);
@@ -79,6 +85,7 @@ export default function DonationDetail({ d, onClose, onChanged }) {
             {d.notes && <><dt>{t('notes')}</dt><dd>{d.notes}</dd></>}
             <dt>{t('date')}</dt><dd className="num">{fmtDateTime(d.collected_at, lang)}</dd>
             {d.collector && <><dt>{t('collector')}</dt><dd>{personName(d.collector, lang)}</dd></>}
+            {enteredBy && <><dt>{t('entered_by_l')}</dt><dd data-testid="entered-by">✍️ {personName(enteredBy, lang)}</dd></>}
             <dt>WhatsApp</dt><dd>{d.shared_at ? t('shared_at', { time: fmtDateTime(d.shared_at, lang) }) : t('not_shared')}</dd>
             {d.status === 'cancelled' && <><dt>{t('cancelled')}</dt><dd>{t('reason_x', { reason: d.cancel_reason })} · {fmtDateTime(d.cancelled_at, lang)}</dd></>}
           </dl>

@@ -184,6 +184,7 @@ export function buildSheets(data, { year, settings, lang, exportedBy }) {
     Gotram: d.gotram || '',
     Purpose: L(d.purpose_te, d.purpose_en),
     'Collected By': nameOf(d.collector),
+    'Entered By': d.entered_by && d.entered_by !== d.collected_by ? nameOf(people[d.entered_by]) : '',   // version 15
     'Collector Mobile': d.collector?.mobile || '',
     Status: d.status === 'cancelled' ? 'Cancelled' : 'Valid',
     'Cancel Reason': d.cancel_reason || '',
