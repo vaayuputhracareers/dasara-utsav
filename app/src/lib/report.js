@@ -117,7 +117,7 @@ export function computeReport(data, lang, t) {
 }
 
 /** Draw the report on A4 canvases (one per page). */
-function drawReport(R, { t, lang, settings, year, preparedBy }) {
+function drawReport(R, { t, lang, settings, year, preparedBy, logo }) {
   const P = picker(lang);
   const pages = [];
   let g = null;
@@ -175,12 +175,19 @@ function drawReport(R, { t, lang, settings, year, preparedBy }) {
     y += after;
   };
   const heading = (s) => {
-    if (y > TOP) y += 22;
-    room(60 + 50);
+    if (y > TOP) newPage();   // one table per page
     g.fillStyle = C.saffron;
     g.fillRect(M, y + 9, 8, 36);
     text(s, M + 22, y + 27, { size: 28, weight: 700, color: C.maroon });
     y += 60;
+  };
+  const subheading = (s) => {
+    y += 18;
+    room(50 + 48);
+    text(s, M + 4, y + 22, { size: 24, weight: 700, color: C.sub });
+    g.fillStyle = C.line;
+    g.fillRect(M, y + 44, CW, 2);
+    y += 50;
   };
   // label · count · amount rows (the summary and the other details)
   const stmt = (rows) => {
@@ -278,6 +285,7 @@ function drawReport(R, { t, lang, settings, year, preparedBy }) {
   const festLine = fest && fy && !fest.includes(fy) ? `${fest} - ${fy}` : fest || fy;
   const period = R.period ? ` · ${t('rp_period', { from: fmtDay(R.period[0], lang, true), to: fmtDay(R.period[1], lang, true) })}` : '';
   const items = [
+    logo && { logo: true },                                                                      // the logo from Settings
     temple && { s: temple, size: 46, weight: 800, color: C.maroon, after: 16 },                 // 1. temple name
     committee && { s: committee, size: 30, weight: 600, color: C.sub, after: 12 },              // 2. committee name
     address && { s: address, size: 26, weight: 400, color: C.muted, after: 0 },                 // 3. street / address, village / town
@@ -290,8 +298,10 @@ function drawReport(R, { t, lang, settings, year, preparedBy }) {
   ].filter(Boolean);
   const coverW = W - 2 * 130;
   const RULE = 70;   // the short line between the groups, with its space
+  const LOGO = 200;  // logo size on the cover
   const laid = items.map((it) => {
     if (it.rule) return { ...it, h: RULE };
+    if (it.logo) return { ...it, h: LOGO + 36 };
     font(it.size, it.weight);
     const LH = Math.round(it.size * 1.4);
     const lines = wrap(it.s, coverW);
@@ -299,7 +309,21 @@ function drawReport(R, { t, lang, settings, year, preparedBy }) {
   });
   y = Math.max(110, (H - laid.reduce((a, it) => a + it.h, 0)) / 2);
   laid.forEach((it) => {
-    if (it.rule) {
+    if (it.logo) {
+      const sc = Math.max(LOGO / logo.naturalWidth, LOGO / logo.naturalHeight);
+      const lw = logo.naturalWidth * sc, lh = logo.naturalHeight * sc;
+      g.save();
+      g.beginPath();
+      g.arc(W / 2, y + LOGO / 2, LOGO / 2, 0, Math.PI * 2);
+      g.clip();
+      g.drawImage(logo, (W - lw) / 2, y + (LOGO - lh) / 2, lw, lh);
+      g.restore();
+      g.strokeStyle = C.gold;
+      g.lineWidth = 5;
+      g.beginPath();
+      g.arc(W / 2, y + LOGO / 2, LOGO / 2 - 2, 0, Math.PI * 2);
+      g.stroke();
+    } else if (it.rule) {
       g.fillStyle = C.saffron;
       g.fillRect(W / 2 - 80, y + RULE / 2 - 2, 160, 4);
     } else {
@@ -312,7 +336,7 @@ function drawReport(R, { t, lang, settings, year, preparedBy }) {
   // ---------- summary: opening + receipts − payments = closing
   heading(t('rp_sec_summary'));
   const S = [{ label: t('rp_opening'), amount: R.opening, bold: true }];
-  if (R.opening !== 0) S.push({ label: t('rp_cash_in_hand'), amount: R.openCash, level: 1 }, { label: t('rp_cash_at_bank'), amount: R.openBank, level: 1 });
+  S.push({ label: t('rp_cash_in_hand'), amount: R.openCash, level: 1 }, { label: t('rp_cash_at_bank'), amount: R.openBank, level: 1 });   // always the split
   S.push(
     { sign: '+', label: t('rp_receipts_total'), count: t('rp_receipts_n', { n: R.receipts.n }), amount: R.receipts.total, bold: true, line: true },
     { label: t('rp_cash'), amount: R.receipts.cash, level: 1 },
@@ -379,29 +403,54 @@ function drawReport(R, { t, lang, settings, year, preparedBy }) {
     para(t('rp_members_note'), { size: 19, color: C.muted, after: 0 });
   }
 
-  // ---------- other details
-  const O = [];
-  if (R.deposits.n) O.push({ label: t('rp_deposited'), count: t('entries_n', { n: R.deposits.n }), amount: R.deposits.total });
-  if (R.withdrawals.n) O.push({ label: t('rp_withdrawn'), count: t('entries_n', { n: R.withdrawals.n }), amount: R.withdrawals.total });
-  if (R.paidBack.n) O.push({ label: t('rp_paid_back'), count: t('entries_n', { n: R.paidBack.n }), amount: R.paidBack.total });
+  // ---------- other details: the saree part and the hundi part separately
+  const pendingRows = R.pending.n ? [{ label: t('rp_pending'), count: t('entries_n', { n: R.pending.n }), amount: R.pending.total }] : [];
+  const sareeRows = [];
+  if (R.sareeDonors) sareeRows.push({ label: t('rp_saree_donors'), count: String(R.sareeDonors) });
   if (R.auction.n) {
-    O.push(
+    sareeRows.push(
       { label: t('rp_auction_bid', { n: R.auction.n }), amount: R.auction.bid },
       { label: t('rp_auction_paid'), amount: R.auction.paid },
       { label: t('rp_auction_due'), amount: R.auction.due },
     );
   }
-  if (R.hundi.n) O.push({ label: t('rp_hundi'), count: t('entries_n', { n: R.hundi.n }), amount: R.hundi.total });
-  if (R.sareeDonors) O.push({ label: t('rp_saree_donors'), count: String(R.sareeDonors) });
-  if (R.pending.n) O.push({ label: t('rp_pending'), count: t('entries_n', { n: R.pending.n }), amount: R.pending.total });
-  if (R.cancelled.n) O.push({ label: t('rp_cancelled'), count: t('rp_receipts_n', { n: R.cancelled.n }), amount: R.cancelled.total });
-  if (O.length) {
+  const hundiRows = R.hundi.n ? [{ label: t('rp_hundi'), count: t('entries_n', { n: R.hundi.n }), amount: R.hundi.total }] : [];
+  if (pendingRows.length || sareeRows.length || hundiRows.length) {
     heading(t('rp_sec_other'));
-    stmt(O);
+    if (pendingRows.length) stmt(pendingRows);
+    if (sareeRows.length) { subheading(t('rp_sub_saree')); stmt(sareeRows); }
+    if (hundiRows.length) { subheading(t('rp_sub_hundi')); stmt(hundiRows); }
   }
 
+  // ---------- end of the report (after all the tables), with symbols on the left and right
+  y += 56;
+  room(70);
+  const endText = t('rp_end');
+  font(26, 700);
+  const tw = measure(endText);
+  const cy = y + 30;
+  text(endText, W / 2, cy, { size: 26, weight: 700, color: C.maroon, align: 'center' });
+  const diamond = (cx, r) => {
+    g.beginPath();
+    g.moveTo(cx, cy - r);
+    g.lineTo(cx + r, cy);
+    g.lineTo(cx, cy + r);
+    g.lineTo(cx - r, cy);
+    g.closePath();
+    g.fill();
+  };
+  g.fillStyle = C.saffron;
+  [-1, 1].forEach((d) => {
+    const inner = W / 2 + d * (tw / 2 + 28);
+    diamond(inner, 10);
+    diamond(inner + d * 28, 7);
+    diamond(inner + d * 50, 5);
+    g.fillRect(d < 0 ? inner - 210 : inner + 66, cy - 1.5, 144, 3);
+  });
+  y = cy + 40;
+
   // ---------- footer on every page
-  const left = [temple, fest].filter(Boolean).join(' · ');
+  const left = [temple, festLine].filter(Boolean).join(' · ');   // festival title - year
   pages.forEach((c, i) => {
     if (i === 0) return;   // no footer on the cover
     g = c.getContext('2d');
@@ -422,6 +471,30 @@ function drawReport(R, { t, lang, settings, year, preparedBy }) {
   return pages;
 }
 
+/** The temple logo from Settings (skipped when it cannot be drawn into the PDF). */
+function loadLogo(url) {
+  if (!url) return Promise.resolve(null);
+  return new Promise((res) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = 4;
+        c.height = 4;
+        c.getContext('2d').drawImage(img, 0, 0, 4, 4);
+        c.toDataURL();   // throws when the picture would block saving the page
+        res(img);
+      } catch {
+        res(null);
+      }
+    };
+    img.onerror = () => res(null);
+    setTimeout(() => res(null), 10000);
+    img.src = url;
+  });
+}
+
 async function toJpeg(canvas) {
   const blob = await new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('Could not make the page picture'))), 'image/jpeg', 0.88));
   return { blob, bytes: new Uint8Array(await blob.arrayBuffer()), w: canvas.width, h: canvas.height };
@@ -435,7 +508,8 @@ export async function makeReport({ year, lang, settings, preparedBy }) {
   const data = await fetchYear(year || null);
   const R = computeReport(data, lang, t);
   try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch { /* system fonts */ }
-  const canvases = drawReport(R, { t, lang, settings: s, year, preparedBy });
+  const logo = await loadLogo(s.logo_url);
+  const canvases = drawReport(R, { t, lang, settings: s, year, preparedBy, logo });
   const pages = [];
   for (const c of canvases) {
     pages.push(await toJpeg(c));
