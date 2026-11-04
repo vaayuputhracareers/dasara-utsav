@@ -11,6 +11,7 @@ export default function More() {
   const items = [
     ['/handover', '🤝', 'nav_handover', 'more_handover_sub'],
     ['/cash-bank', '🏦', 'nav_cash_bank', 'more_cash_bank_sub'],
+    ['/hundi', '🪙', 'nav_hundi', 'more_hundi_sub'],
     ['/members', '👥', 'nav_members', 'more_members_sub'],
     ['/programs', '📅', 'nav_programs', 'more_programs_sub'],
     ['/puja', '🪔', 'nav_puja', 'more_puja_sub'],

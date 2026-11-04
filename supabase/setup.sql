@@ -362,6 +362,20 @@ select btrim(a.bidder_name), a.bid_amount, a.auction_date, 'cash', a.id, a.creat
 update public.saree_auction a set paid = false
  where a.paid and exists (select 1 from public.saree_auction_payments x where x.auction_id = a.id);
 
+-- Added in version 16 – hundi cash collections (admin only). Each entry is also saved as a cash donation with the
+-- same id (by the app, through the normal donation steps), so it counts in the donations and cash in hand.
+create table if not exists public.hundi_collections (
+  id            uuid primary key default gen_random_uuid(),
+  collected_on  date not null default ((now() at time zone 'Asia/Kolkata')::date),
+  amount        numeric(12,2) not null check (amount > 0),
+  hundi_name    text not null default '',
+  counted_by    text not null default '',
+  note          text not null default '',
+  created_by    uuid references public.profiles(id) on delete set null,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
 create table if not exists public.audit_log (
   id         bigint generated always as identity primary key,
   at         timestamptz not null default now(),
@@ -392,6 +406,7 @@ create index if not exists photos_date_idx            on public.photos (photo_da
 create index if not exists saree_donors_date_idx      on public.saree_donors (given_date, created_at);
 create index if not exists saree_auction_date_idx     on public.saree_auction (auction_date, created_at);
 create index if not exists saree_payments_date_idx    on public.saree_auction_payments (paid_on, created_at);
+create index if not exists hundi_date_idx             on public.hundi_collections (collected_on, created_at);
 
 -- ---------------------------------------------------------------------
 -- 2. HELPER FUNCTIONS
@@ -639,6 +654,9 @@ create trigger saree_auction_touch before update on public.saree_auction
 drop trigger if exists saree_payments_touch on public.saree_auction_payments;
 create trigger saree_payments_touch before update on public.saree_auction_payments
   for each row execute function public.touch_updated_at();
+drop trigger if exists hundi_touch on public.hundi_collections;
+create trigger hundi_touch before update on public.hundi_collections
+  for each row execute function public.touch_updated_at();
 
 -- 3c. Donation: receipt number, token, collector are set by the server
 create or replace function public.donations_before_insert() returns trigger
@@ -839,6 +857,7 @@ alter table public.photos         enable row level security;
 alter table public.saree_donors   enable row level security;
 alter table public.saree_auction  enable row level security;
 alter table public.saree_auction_payments enable row level security;
+alter table public.hundi_collections enable row level security;
 alter table public.audit_log      enable row level security;
 alter table public.receipt_counter enable row level security;   -- no policies: only server functions touch it
 
@@ -934,6 +953,10 @@ drop policy if exists saree_payments_select on public.saree_auction_payments;
 create policy saree_payments_select on public.saree_auction_payments for select to authenticated using (public.is_active_user());
 drop policy if exists saree_payments_write on public.saree_auction_payments;
 create policy saree_payments_write on public.saree_auction_payments for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists hundi_select on public.hundi_collections;
+create policy hundi_select on public.hundi_collections for select to authenticated using (public.is_admin());
+drop policy if exists hundi_write on public.hundi_collections;
+create policy hundi_write on public.hundi_collections for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- audit log (admin read only)
 drop policy if exists audit_select on public.audit_log;
@@ -946,7 +969,7 @@ revoke all on all tables in schema public from anon;
 grant select, insert, update, delete on public.profiles, public.member_invites, public.app_settings,
   public.handovers, public.donations, public.expenses, public.festival_days, public.programs,
   public.pujas, public.cash_transfers, public.audit_log, public.photos, public.saree_donors, public.saree_auction,
-  public.saree_auction_payments to authenticated;
+  public.saree_auction_payments, public.hundi_collections to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 5. FUNCTIONS CALLED BY THE APP
@@ -1481,8 +1504,9 @@ end $$;
 --   13 = saree auction: totals, bidder-wise view, part payments
 --   14 = payments to members: cash / temple UPI, edit and delete earlier handovers / payments
 --   15 = admin records a donation on behalf of a member (Collected by / Entered by)
+--   16 = hundi cash collections (each entry is also a cash donation)
 create or replace function public.get_db_version() returns int
-language sql immutable set search_path = '' as $$ select 15 $$;
+language sql immutable set search_path = '' as $$ select 16 $$;
 
 -- Settings → Delete data (admin only). Two checks on the server: the word DELETE + the admin's own
 -- password (5 wrong passwords → locked for 15 minutes). Deletes every festival record and restarts
@@ -1536,6 +1560,7 @@ begin
     'saree_donors',    (select count(*) from public.saree_donors),
     'saree_auction',   (select count(*) from public.saree_auction),
     'auction_payments', (select count(*) from public.saree_auction_payments),
+    'hundi',            (select count(*) from public.hundi_collections),
     'history',         (select count(*) from public.audit_log));
 
   delete from public.donations where true;      -- "where true": allowed even where DELETE-without-WHERE is blocked
@@ -1545,6 +1570,7 @@ begin
   delete from public.festival_days where true;
   delete from public.pujas where true;
   delete from public.cash_transfers where true;
+  delete from public.hundi_collections where true;   -- version 16
   delete from public.saree_auction_payments where true;   -- version 13
   delete from public.saree_auction where true;   -- version 12
   delete from public.saree_donors where true;

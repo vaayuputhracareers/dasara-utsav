@@ -51,6 +51,7 @@ export default function Layout({ children }) {
     { to: '/expenses', icon: '🧾', label: t('nav_expenses'), badge: pc.expenses },
     { to: '/handover', icon: '🤝', label: t('nav_handover') },
     { to: '/cash-bank', icon: '🏦', label: t('nav_cash_bank') },
+    { to: '/hundi', icon: '🪙', label: t('nav_hundi') },
     { to: '/programs', icon: '📅', label: t('nav_programs') },
     { to: '/puja', icon: '🪔', label: t('nav_puja') },
     { to: '/photos', icon: '📷', label: t('nav_photos') },

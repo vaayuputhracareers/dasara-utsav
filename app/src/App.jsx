@@ -28,6 +28,7 @@ const PublicPage = lazy(() => import('./pages/PublicPage.jsx'));
 const ReceiptView = lazy(() => import('./pages/ReceiptView.jsx'));
 const Festival = lazy(() => import('./pages/Festival.jsx'));   // version 12 – photos, saree donors, saree auction
 const AllList = lazy(() => import('./pages/AllList.jsx'));     // version 12 – members: all donations / all expenses
+const Hundi = lazy(() => import('./pages/Hundi.jsx'));         // version 16 – hundi cash collections (admin)
 
 // "/dasara-utsav/" when hosted at https://<user>.github.io/dasara-utsav/, otherwise "/".
 // The trailing "/" keeps the home address inside the installed app's scope.
@@ -70,6 +71,7 @@ function Private() {
               <>
                 <Route path="/handover" element={<Handover />} />
                 <Route path="/cash-bank" element={<CashBank />} />
+                <Route path="/hundi" element={<Hundi />} />
                 <Route path="/members" element={<Members />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/public-page" element={<PublicSettings />} />
